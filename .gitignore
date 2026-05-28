@@ -1,0 +1,4 @@
+backups/*
+venv/*
+
+.DS_Store
