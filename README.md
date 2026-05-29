@@ -82,7 +82,12 @@ directory name is the app group shared by 2Do and its helpers/extensions. The
 `BeehiveSharedDefaultsKey` value is a 2Do-specific app-bundle clue, not a
 general macOS standard.
 
-Refreshes follow the same flow:
+Task and count tools also check whether at least five minutes have elapsed since
+the last automatic refresh check before opening the read-only backup.
+
+If a previous refresh recorded the source database path and the source `2do.db*`
+files are not newer than the matching local backup files, refresh skips copying.
+Otherwise, refreshes follow this flow:
 
 1. Copy each candidate database and its related SQLite sidecar files, such as
    `2do.db-wal` and `2do.db-shm`, into a temporary
@@ -114,9 +119,8 @@ venv/bin/python -m ruff format --check .
 ## TODOs
 
 - [ ] Validate every SQLite column used by task, calendar, and tag queries before accepting a backup.
-- [x] Package the server with a real entry point so MCP clients do not depend on a checked-out `venv/bin/python`.
-- [ ] Add automatic backup refresh with a sensible default interval.
-- [ ] Track the source database path used for the backup so refresh can compare source `2do.db*` mtimes against the local backup and skip unchanged copies.
+- [x] Add automatic backup refresh with a sensible default interval.
+- [x] Track the source database path used for the backup so refresh can compare source `2do.db*` mtimes against the local backup and skip unchanged copies.
 - [ ] Make tag filtering delimiter-aware instead of using substring `LIKE` matching.
 - [ ] Add richer task tools and filters:
   - [ ] list calendars

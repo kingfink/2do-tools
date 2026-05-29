@@ -30,8 +30,9 @@ def main(argv: list[str] | None = None) -> int:
         return _serve(args.transport, host=args.host, port=args.port)
 
     if args.command == "refresh":
-        server.refresh_backup()
-        print(f"Refreshed backup at {backups_db_path()}")
+        refreshed = server.refresh_backup()
+        status = "Refreshed" if refreshed else "Backup already current"
+        print(f"{status} at {backups_db_path()}")
         return 0
 
     if args.command == "doctor":
@@ -42,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _serve(transport: str, *, host: str = "127.0.0.1", port: int = 8765) -> int:
-    server.ensure_backup_db_exists()
+    server.ensure_backup_db_current()
 
     kwargs = {}
     if transport != "stdio":
@@ -66,7 +67,7 @@ def _doctor() -> int:
         print(f"  - {candidate}")
 
     try:
-        server.ensure_backup_db_exists()
+        server.ensure_backup_db_current()
     except Exception as exc:
         print(f"Backup check failed: {exc}", file=sys.stderr)
         return 1
