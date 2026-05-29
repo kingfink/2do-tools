@@ -14,6 +14,7 @@ rm -rf "$bundle_dir"
 mkdir -p "$bundle_dir"
 
 cp "$repo_root/mcpb/manifest.json" "$bundle_dir/manifest.json"
+cp "$repo_root/mcpb/.mcpbignore" "$bundle_dir/.mcpbignore"
 cp "$repo_root/mcpb/server.py" "$bundle_dir/server.py"
 cp "$repo_root/pyproject.toml" "$bundle_dir/pyproject.toml"
 cp "$repo_root/README.md" "$bundle_dir/README.md"

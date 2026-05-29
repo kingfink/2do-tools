@@ -224,6 +224,7 @@ Settings > Extensions > Advanced settings > Install Extension.
 Build the MCPB proof of concept with:
 
 ```bash
+npm install -g @anthropic-ai/mcpb
 scripts/build-mcpb.sh
 ```
 
