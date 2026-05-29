@@ -51,7 +51,7 @@ Then add this MCP server to your client. The same command works everywhere — n
 
 | Client | Where the config goes |
 | --- | --- |
-| Claude Code | The project's `.mcp.json` (already configured in this repo), or `claude mcp add-json 2do '<the JSON above>'`. |
+| Claude Code | The project's `.mcp.json` (already configured in this repo), or run `claude mcp add-json 2do '{"type":"stdio","command":"uvx","args":["--from","git+https://github.com/kingfink/2do-mcp@v0.1.0","2do-mcp","serve"]}'`. |
 | Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-mcp@v0.1.0 2do-mcp serve` |
 | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json`, then restart Claude Desktop. |
 
