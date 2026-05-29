@@ -1,9 +1,10 @@
+import json
 import plistlib
 import secrets
 import shutil
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastmcp import FastMCP
@@ -20,6 +21,9 @@ TAG_DELIMITER = "_~|$$@$$|~_"
 
 BACKUPS_DB_DIR = backups_db_dir()
 BACKUPS_DB_PATH = backups_db_path()
+BACKUP_METADATA_PATH = BACKUPS_DB_DIR / "metadata.json"
+AUTO_BACKUP_REFRESH_INTERVAL = timedelta(minutes=5)
+_last_auto_refresh_check_at: datetime | None = None
 
 GROUP_CONTAINER_ROOTS = [
     Path.home() / "Library" / "Group Containers",
@@ -131,6 +135,7 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
 
 
 def _connect() -> sqlite3.Connection:
+    ensure_backup_db_current()
     connection = sqlite3.connect(f"file:{BACKUPS_DB_PATH}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     return connection
@@ -231,11 +236,24 @@ def _count_tasks(filters: TaskFilters) -> int:
     return int(row["n"])
 
 
-def ensure_backup_db_exists() -> None:
-    if BACKUPS_DB_PATH.exists():
+def ensure_backup_db_current(*, now: datetime | None = None) -> None:
+    global _last_auto_refresh_check_at
+
+    current_time = now or datetime.now(UTC)
+
+    if not BACKUPS_DB_PATH.exists():
+        refresh_backup()
+        _last_auto_refresh_check_at = current_time
+        return
+
+    if (
+        _last_auto_refresh_check_at is not None
+        and current_time - _last_auto_refresh_check_at < AUTO_BACKUP_REFRESH_INTERVAL
+    ):
         return
 
     refresh_backup()
+    _last_auto_refresh_check_at = current_time
 
 
 def _path_exists(path: Path) -> bool:
@@ -381,12 +399,56 @@ def _promote_backup_db(staging_dir: Path) -> None:
     staging_dir.rmdir()
 
 
-def refresh_backup():
+def _read_backup_source_db_path() -> Path | None:
+    try:
+        raw_metadata = json.loads(BACKUP_METADATA_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    source_db_path = raw_metadata.get("source_db_path")
+    if not isinstance(source_db_path, str) or not source_db_path:
+        return None
+
+    return Path(source_db_path)
+
+
+def _write_backup_metadata(source_db: Path) -> None:
+    BACKUP_METADATA_PATH.write_text(json.dumps({"source_db_path": str(source_db)}, indent=2) + "\n")
+
+
+def _db_family_files(db_path: Path) -> dict[str, Path]:
+    return {path.name: path for path in db_path.parent.glob(f"{db_path.name}*")}
+
+
+def _tracked_source_db_is_unchanged() -> bool:
+    source_db_path = _read_backup_source_db_path()
+    if source_db_path is None or not BACKUPS_DB_PATH.exists():
+        return False
+
+    source_files = _db_family_files(source_db_path)
+    backup_files = _db_family_files(BACKUPS_DB_PATH)
+
+    if not source_files or set(source_files) != set(backup_files):
+        return False
+
+    try:
+        return all(
+            source_file.stat().st_mtime_ns <= backup_files[file_name].stat().st_mtime_ns
+            for file_name, source_file in source_files.items()
+        )
+    except OSError:
+        return False
+
+
+def refresh_backup() -> bool:
     BACKUPS_DB_DIR.mkdir(parents=True, exist_ok=True)
 
     valid_staging_dirs: list[tuple[Path, Path]] = []
 
     try:
+        if _tracked_source_db_is_unchanged():
+            return False
+
         for candidate in discover_candidate_dbs():
             staging_dir = _copy_candidate_db_to_staging(candidate)
 
@@ -404,8 +466,10 @@ def refresh_backup():
             sources = "\n".join(str(source) for source, _ in valid_staging_dirs)
             raise RuntimeError(f"Multiple valid 2Do databases found:\n{sources}")
 
-        _, staging_dir = valid_staging_dirs[0]
+        source_db, staging_dir = valid_staging_dirs[0]
         _promote_backup_db(staging_dir)
+        _write_backup_metadata(source_db)
+        return True
 
     finally:
         for incoming_dir in BACKUPS_DB_DIR.glob(".incoming-*"):
@@ -442,5 +506,5 @@ def refresh_backup_db() -> None:
 
 
 if __name__ == "__main__":
-    ensure_backup_db_exists()
+    ensure_backup_db_current()
     mcp.run()
