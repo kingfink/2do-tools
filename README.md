@@ -119,8 +119,6 @@ venv/bin/python -m ruff format --check .
 ## TODOs
 
 - [ ] Validate every SQLite column used by task, calendar, and tag queries before accepting a backup.
-- [x] Add automatic backup refresh with a sensible default interval.
-- [x] Track the source database path used for the backup so refresh can compare source `2do.db*` mtimes against the local backup and skip unchanged copies.
 - [ ] Make tag filtering delimiter-aware instead of using substring `LIKE` matching.
 - [ ] Add richer task tools and filters:
   - [ ] list calendars
