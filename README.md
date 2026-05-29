@@ -5,6 +5,9 @@ An MCP server for reading tasks from 2Do.
 This server is macOS-only. It reads from the local 2Do macOS app database and
 uses macOS application support and group-container paths.
 
+This project is experimental and provided as-is, without warranty, support, or
+liability for data loss, service interruption, or other issues.
+
 The server keeps its own local backup of 2Do's SQLite database under
 `~/Library/Application Support/2do-mcp/backups/` and serves read-only task
 queries from that copy. It does not write to the original 2Do database.
