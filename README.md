@@ -199,6 +199,56 @@ For a more shareable Claude Desktop install, package this server as a Desktop
 Extension (`.mcpb`). Claude Desktop can install custom `.mcpb` files from
 Settings > Extensions > Advanced settings > Install Extension.
 
+### Claude Cowork
+
+Claude Cowork uses Claude's remote custom connector path, not the local
+`claude_desktop_config.json` path. Custom connectors are reached from Anthropic's
+cloud infrastructure, so a server running only on `127.0.0.1` is not enough.
+
+Run the server with Streamable HTTP locally:
+
+```bash
+venv/bin/2do-mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
+```
+
+The local endpoint is:
+
+```text
+http://127.0.0.1:8765/mcp
+```
+
+For Cowork, expose that endpoint through a trusted HTTPS tunnel or hosted
+deployment, then add the public URL as a custom connector in Claude. Do not
+share a tunneled 2Do MCP endpoint unless you are comfortable exposing your local
+task data through that tunnel.
+
+Claude's custom connector documentation is here:
+<https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp>
+
+### ChatGPT
+
+ChatGPT also connects to remote MCP servers, not directly to local stdio or
+localhost MCP servers.
+
+Run the server with Streamable HTTP locally:
+
+```bash
+venv/bin/2do-mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
+```
+
+The local endpoint is:
+
+```text
+http://127.0.0.1:8765/mcp
+```
+
+For ChatGPT, use a supported secure tunnel or hosted HTTPS endpoint, then create
+a custom MCP app in developer mode and scan the server's tools. Do not paste the
+local `127.0.0.1` URL into ChatGPT; it must be reachable by OpenAI.
+
+OpenAI's ChatGPT MCP app documentation is here:
+<https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt>
+
 ## Backup Behavior
 
 On startup, the server checks for
