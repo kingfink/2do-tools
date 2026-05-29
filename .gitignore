@@ -11,4 +11,6 @@ build/
 dist/
 *.egg-info/
 
+docs/
+
 .DS_Store
