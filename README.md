@@ -2,9 +2,9 @@
 
 An MCP server for reading tasks from 2Do.
 
-The server keeps its own local backup of 2Do's SQLite database under `backups/`
-and serves read-only task queries from that copy. It does not write to the
-original 2Do database.
+The server keeps its own local backup of 2Do's SQLite database under
+`~/Library/Application Support/2do-mcp/backups/` and serves read-only task
+queries from that copy. It does not write to the original 2Do database.
 
 ## Tools
 
@@ -13,19 +13,32 @@ original 2Do database.
 - `get_completed_tasks`: list completed, non-deleted, non-archived tasks.
 - `count_completed_tasks`: count completed, non-deleted, non-archived tasks.
 - `refresh_backup_db`: find the local 2Do database again, copy it into
-  `backups/`, validate it, and replace the previous backup.
+  the app support backup directory, validate it, and replace the previous
+  backup.
 
 ## Setup
 
 ```bash
 python3 -m venv venv
-venv/bin/pip install -r requirements.txt
+venv/bin/pip install -e '.[dev]'
 ```
 
-Run the server directly:
+Check setup:
 
 ```bash
-./run-server.sh
+venv/bin/2do-mcp doctor
+```
+
+Run the MCP server:
+
+```bash
+venv/bin/2do-mcp serve
+```
+
+Refresh the backup:
+
+```bash
+venv/bin/2do-mcp refresh
 ```
 
 If the server cannot find the 2Do database, make sure 2Do has been opened at
@@ -34,23 +47,28 @@ read `~/Library/Group Containers`.
 
 ## MCP Client Configuration
 
-Use `run-server.sh` as the MCP command. For example:
+Use `2do-mcp` as the MCP command. For example:
 
 ```json
 {
   "mcpServers": {
     "2do": {
-      "command": "/Users/tim/2do-mcp/run-server.sh"
+      "type": "stdio",
+      "command": "2do-mcp",
+      "args": ["serve"]
     }
   }
 }
 ```
 
-Adjust the path if the repository lives somewhere else.
+Make sure `2do-mcp` is on the `PATH` seen by the MCP client. For local
+development, use the absolute path to `venv/bin/2do-mcp` if the client does not
+inherit your shell environment.
 
 ## Backup Behavior
 
-On startup, the server checks for `backups/2do.db`. If that backup does not
+On startup, the server checks for
+`~/Library/Application Support/2do-mcp/backups/2do.db`. If that backup does not
 exist, it searches for candidate `2do.db` files in this order:
 
 1. 2Do's known app-group container:
@@ -67,21 +85,21 @@ general macOS standard.
 Refreshes follow the same flow:
 
 1. Copy each candidate database and its related SQLite sidecar files, such as
-   `2do.db-wal` and `2do.db-shm`, into a temporary `backups/.incoming-*`
-   directory.
+   `2do.db-wal` and `2do.db-shm`, into a temporary
+   `~/Library/Application Support/2do-mcp/backups/.incoming-*` directory.
 2. Validate the copied database with SQLite `PRAGMA integrity_check`.
 3. Confirm the expected `tasks`, `calendars`, and `tags` tables exist.
 4. Confirm the minimum required task columns exist.
-5. Promote exactly one valid staged copy into `backups/`.
+5. Promote exactly one valid staged copy into the app support backup directory.
 
 If no valid database is found, or if multiple valid 2Do databases are found, the
 refresh fails instead of guessing.
 
 ## Privacy
 
-The backup is stored locally in this repository's `backups/` directory. It may
-contain task titles, notes, list names, tags, timestamps, and other 2Do data.
-Do not commit files from `backups/`.
+The backup is stored locally under
+`~/Library/Application Support/2do-mcp/backups/`. It may contain task titles,
+notes, list names, tags, timestamps, and other 2Do data.
 
 ## Development
 
@@ -96,7 +114,7 @@ venv/bin/python -m ruff format --check .
 ## TODOs
 
 - [ ] Validate every SQLite column used by task, calendar, and tag queries before accepting a backup.
-- [ ] Package the server with a real entry point so MCP clients do not depend on a checked-out `venv/bin/python`.
+- [x] Package the server with a real entry point so MCP clients do not depend on a checked-out `venv/bin/python`.
 - [ ] Add automatic backup refresh with a sensible default interval.
 - [ ] Track the source database path used for the backup so refresh can compare source `2do.db*` mtimes against the local backup and skip unchanged copies.
 - [ ] Make tag filtering delimiter-aware instead of using substring `LIKE` matching.

@@ -1,6 +1,14 @@
-__pycache__/*
-.claude/*
-backups/*
-venv/*
+__pycache__/
+*.py[cod]
+*$py.class
+
+.claude/
+.ruff_cache/
+venv/
+.venv/
+
+build/
+dist/
+*.egg-info/
 
 .DS_Store

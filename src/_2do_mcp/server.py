@@ -3,11 +3,13 @@ import secrets
 import shutil
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
+
+from .storage import backups_db_dir, backups_db_path
 
 mcp = FastMCP("2Do")
 
@@ -16,8 +18,8 @@ NULL_DUE_DATE_SENTINEL = 6406192800.0
 
 TAG_DELIMITER = "_~|$$@$$|~_"
 
-BACKUPS_DB_DIR = Path(__file__).parent / "backups"
-BACKUPS_DB_PATH = BACKUPS_DB_DIR / "2do.db"
+BACKUPS_DB_DIR = backups_db_dir()
+BACKUPS_DB_PATH = backups_db_path()
 
 GROUP_CONTAINER_ROOTS = [
     Path.home() / "Library" / "Group Containers",
@@ -85,7 +87,7 @@ def _from_2do_timestamp(
     if null_due_date and value == NULL_DUE_DATE_SENTINEL:
         return None
 
-    return datetime.fromtimestamp(value, timezone.utc)
+    return datetime.fromtimestamp(value, UTC)
 
 
 def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
@@ -201,7 +203,7 @@ def _get_tasks(filters: TaskFilters) -> list[Task]:
                 uuid=row["uuid"],
                 title=row["title"],
                 notes=row["notes"] or None,
-                date_created=datetime.fromtimestamp(row["date_created"], timezone.utc),
+                date_created=datetime.fromtimestamp(row["date_created"], UTC),
                 date_due=_from_2do_timestamp(row["date_due"], null_due_date=True),
                 date_completed=_from_2do_timestamp(row["date_completed"]),
                 completed=bool(row["completed"]),
@@ -229,11 +231,11 @@ def _count_tasks(filters: TaskFilters) -> int:
     return int(row["n"])
 
 
-def _ensure_backup_db_exists() -> None:
+def ensure_backup_db_exists() -> None:
     if BACKUPS_DB_PATH.exists():
         return
 
-    _refresh_backup_db()
+    refresh_backup()
 
 
 def _path_exists(path: Path) -> bool:
@@ -302,7 +304,7 @@ def _append_group_container_id_candidates(
             )
 
 
-def _discover_candidate_dbs() -> list[Path]:
+def discover_candidate_dbs() -> list[Path]:
     seen_paths: set[str] = set()
     candidates: list[Path] = []
 
@@ -379,13 +381,13 @@ def _promote_backup_db(staging_dir: Path) -> None:
     staging_dir.rmdir()
 
 
-def _refresh_backup_db():
+def refresh_backup():
     BACKUPS_DB_DIR.mkdir(parents=True, exist_ok=True)
 
     valid_staging_dirs: list[tuple[Path, Path]] = []
 
     try:
-        for candidate in _discover_candidate_dbs():
+        for candidate in discover_candidate_dbs():
             staging_dir = _copy_candidate_db_to_staging(candidate)
 
             if _validate_backup_db(staging_dir):
@@ -436,9 +438,9 @@ def count_open_tasks() -> int:
 
 @mcp.tool()
 def refresh_backup_db() -> None:
-    _refresh_backup_db()
+    refresh_backup()
 
 
 if __name__ == "__main__":
-    _ensure_backup_db_exists()
+    ensure_backup_db_exists()
     mcp.run()

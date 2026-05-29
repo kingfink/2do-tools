@@ -2,8 +2,7 @@
     "mcpServers": {
       "2Do": {
         "type": "stdio",
-        "command": "./run-server.sh",
-        "cwd": "."
+        "command": "2do-mcp"
       }
     }
   }

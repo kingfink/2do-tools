@@ -1,4 +1,0 @@
-fastmcp
-pydantic
-ruff
-pre-commit
