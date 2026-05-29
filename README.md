@@ -118,8 +118,6 @@ venv/bin/python -m ruff format --check .
 
 ## TODOs
 
-- [x] Validate every SQLite column used by task, calendar, and tag queries before accepting a backup.
-- [x] Make tag filtering delimiter-aware instead of using substring `LIKE` matching.
 - [ ] Add richer task tools and filters:
   - [ ] list calendars
   - [ ] list tags

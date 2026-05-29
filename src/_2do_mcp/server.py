@@ -20,7 +20,7 @@ NULL_DUE_DATE_SENTINEL = 6406192800.0
 TAG_DELIMITER = "_~|$$@$$|~_"
 
 REQUIRED_BACKUP_COLUMNS = {
-    "tasks": {
+    "tasks": [
         "archived",
         "calendaruid",
         "completeddate",
@@ -33,9 +33,9 @@ REQUIRED_BACKUP_COLUMNS = {
         "tags",
         "title",
         "uid",
-    },
-    "calendars": {"title", "uid"},
-    "tags": {"isdeleted", "tag", "uid"},
+    ],
+    "calendars": ["title", "uid"],
+    "tags": ["isdeleted", "tag", "uid"],
 }
 
 BACKUPS_DB_DIR = backups_db_dir()
@@ -403,7 +403,7 @@ def _validate_backup_db(staging_dir: Path) -> bool:
 
             for table, required_columns in REQUIRED_BACKUP_COLUMNS.items():
                 columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table});")}
-                if not required_columns.issubset(columns):
+                if not set(required_columns).issubset(columns):
                     return False
 
             return True
