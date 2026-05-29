@@ -51,6 +51,32 @@ If the server cannot find the 2Do database, make sure 2Do has been opened at
 least once and that the app or terminal running this server has permission to
 read `~/Library/Group Containers`.
 
+## Installing in MCP Clients
+
+2Do MCP is a local, read-only MCP server for the 2Do macOS app.
+
+| Client | POC install path | Notes |
+| --- | --- | --- |
+| Codex | Plugin config or `codex mcp add` | Local stdio MCP works. |
+| Claude Code | `.mcp.json` or `claude mcp add` | Local stdio MCP works. |
+| Claude Desktop | Manual config now, MCPB package later | Local stdio MCP works. |
+| Claude Cowork | Remote custom connector | Needs HTTPS URL reachable from Anthropic. |
+| ChatGPT | Custom MCP app in developer mode | Needs HTTPS URL reachable from OpenAI. |
+
+Most local MCP clients should run:
+
+```bash
+/path/to/2do-mcp/venv/bin/2do-mcp serve
+```
+
+For this checkout, that is usually:
+
+```bash
+/Users/tim/2do-mcp/venv/bin/2do-mcp serve
+```
+
+Use the absolute path when a client does not inherit your shell `PATH`.
+
 ## MCP Client Configuration
 
 Use `2do-mcp` as the MCP command. For example:
