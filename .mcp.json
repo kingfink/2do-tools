@@ -1,0 +1,9 @@
+{
+    "mcpServers": {
+      "2Do": {
+        "type": "stdio",
+        "command": "./run-server.sh",
+        "cwd": "."
+      }
+    }
+  }
