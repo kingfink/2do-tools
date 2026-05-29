@@ -1,8 +1,9 @@
 {
     "mcpServers": {
-      "2Do": {
+      "2do": {
         "type": "stdio",
-        "command": "2do-mcp"
+        "command": "2do-mcp",
+        "args": ["serve"]
       }
     }
   }

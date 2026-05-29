@@ -1,0 +1,71 @@
+{
+  "manifest_version": "0.4",
+  "name": "2do-mcp",
+  "display_name": "2Do MCP",
+  "version": "0.1.0",
+  "description": "Read tasks from the local 2Do macOS app.",
+  "long_description": "A local, read-only MCP server for querying open and completed tasks from the 2Do macOS app.",
+  "author": {
+    "name": "Tim Finkel",
+    "url": "https://github.com/kingfink"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kingfink/2do-mcp.git"
+  },
+  "homepage": "https://github.com/kingfink/2do-mcp",
+  "documentation": "https://github.com/kingfink/2do-mcp#readme",
+  "support": "https://github.com/kingfink/2do-mcp/issues",
+  "server": {
+    "type": "uv",
+    "entry_point": "server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "${__dirname}",
+        "python",
+        "${__dirname}/server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "${__dirname}/src"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "get_open_tasks",
+      "description": "List open, non-deleted, non-archived tasks."
+    },
+    {
+      "name": "count_open_tasks",
+      "description": "Count open, non-deleted, non-archived tasks."
+    },
+    {
+      "name": "get_completed_tasks",
+      "description": "List completed, non-deleted, non-archived tasks."
+    },
+    {
+      "name": "count_completed_tasks",
+      "description": "Count completed, non-deleted, non-archived tasks."
+    },
+    {
+      "name": "refresh_backup_db",
+      "description": "Refresh the local read-only backup of the 2Do database."
+    }
+  ],
+  "compatibility": {
+    "platforms": ["darwin"],
+    "runtimes": {
+      "python": ">=3.11"
+    }
+  },
+  "keywords": [
+    "2do",
+    "macos",
+    "mcp",
+    "productivity",
+    "tasks"
+  ]
+}

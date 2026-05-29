@@ -51,6 +51,32 @@ If the server cannot find the 2Do database, make sure 2Do has been opened at
 least once and that the app or terminal running this server has permission to
 read `~/Library/Group Containers`.
 
+## Installing in MCP Clients
+
+2Do MCP is a local, read-only MCP server for the 2Do macOS app.
+
+| Client | POC install path | Notes |
+| --- | --- | --- |
+| Codex | Plugin config or `codex mcp add` | Local stdio MCP works. |
+| Claude Code | `.mcp.json` or `claude mcp add` | Local stdio MCP works. |
+| Claude Desktop | Manual config now, MCPB package later | Local stdio MCP works. |
+| Claude Cowork | Remote custom connector | Needs HTTPS URL reachable from Anthropic. |
+| ChatGPT | Custom MCP app in developer mode | Needs HTTPS URL reachable from OpenAI. |
+
+Most local MCP clients should run:
+
+```bash
+/path/to/2do-mcp/venv/bin/2do-mcp serve
+```
+
+For this checkout, that is usually:
+
+```bash
+/Users/tim/2do-mcp/venv/bin/2do-mcp serve
+```
+
+Use the absolute path when a client does not inherit your shell `PATH`.
+
 ## MCP Client Configuration
 
 Use `2do-mcp` as the MCP command. For example:
@@ -70,6 +96,203 @@ Use `2do-mcp` as the MCP command. For example:
 Make sure `2do-mcp` is on the `PATH` seen by the MCP client. For local
 development, use the absolute path to `venv/bin/2do-mcp` if the client does not
 inherit your shell environment.
+
+### Codex
+
+Install the server into Codex with an absolute path to the local checkout:
+
+```bash
+codex mcp add 2do -- /absolute/path/to/2do-mcp/venv/bin/2do-mcp serve
+```
+
+For this checkout, that is:
+
+```bash
+codex mcp add 2do -- /Users/tim/2do-mcp/venv/bin/2do-mcp serve
+```
+
+Check the configured server:
+
+```bash
+codex mcp get 2do
+```
+
+The repository also includes `.codex-plugin/plugin.json` for a shareable plugin
+proof of concept. The direct `codex mcp add` command is the fastest local
+install path while plugin distribution is being refined.
+
+For the marketplace proof of concept, make sure `2do-mcp` is installed on the
+user's `PATH`, then add this repository as a Codex plugin marketplace:
+
+```bash
+codex plugin marketplace add https://github.com/kingfink/2do-mcp
+```
+
+After adding the marketplace, install the `2do` plugin from the Codex plugin UI.
+The marketplace files live at `.agents/plugins/marketplace.json` and
+`plugins/2do/.codex-plugin/plugin.json`.
+
+### Claude Code
+
+Claude Code can use the repository's `.mcp.json` as a project-scoped MCP server
+configuration. From this checkout, run:
+
+```bash
+claude mcp list
+```
+
+If Claude Code shows the `2do` server as pending, approve it when prompted. You
+can also install the server explicitly with an absolute path:
+
+```bash
+claude mcp add 2do -- /absolute/path/to/2do-mcp/venv/bin/2do-mcp serve
+```
+
+For this checkout, that is:
+
+```bash
+claude mcp add 2do -- /Users/tim/2do-mcp/venv/bin/2do-mcp serve
+```
+
+Check the configured server:
+
+```bash
+claude mcp get 2do
+```
+
+The repository also includes `.claude-plugin/plugin.json` for a shareable plugin
+proof of concept.
+
+For the marketplace proof of concept, make sure `2do-mcp` is installed on the
+user's `PATH`, then add this repository as a Claude Code plugin marketplace:
+
+```bash
+claude plugin marketplace add https://github.com/kingfink/2do-mcp
+claude plugin install 2do@2do-mcp
+```
+
+The marketplace files live at `.claude-plugin/marketplace.json` and
+`plugins/2do/.claude-plugin/plugin.json`.
+
+### Claude Desktop
+
+Claude Desktop uses a separate MCP configuration from Claude Code. A server added
+to Claude Code with `.mcp.json` or `claude mcp add` does not automatically appear
+in the Claude Desktop chat app.
+
+For a manual local install, edit:
+
+```text
+~/Library/Application Support/Claude/claude_desktop_config.json
+```
+
+Add the server with an absolute path:
+
+```json
+{
+  "mcpServers": {
+    "2do": {
+      "type": "stdio",
+      "command": "/absolute/path/to/2do-mcp/venv/bin/2do-mcp",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+For this checkout, that is:
+
+```json
+{
+  "mcpServers": {
+    "2do": {
+      "type": "stdio",
+      "command": "/Users/tim/2do-mcp/venv/bin/2do-mcp",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving the file, then check the Desktop app's
+connector or developer settings to confirm the `2do` server loaded.
+
+For a more shareable Claude Desktop install, package this server as a Desktop
+Extension (`.mcpb`). Claude Desktop can install custom `.mcpb` files from
+Settings > Extensions > Advanced settings > Install Extension.
+
+Build the MCPB proof of concept with:
+
+```bash
+npm install -g @anthropic-ai/mcpb
+scripts/build-mcpb.sh
+```
+
+The MCPB scaffold lives under `mcpb/`, and the script writes
+`dist/2do-mcp.mcpb`. Install the generated bundle by double-clicking it,
+dragging it into Claude Desktop, or using the Extensions settings.
+
+### Claude Cowork
+
+Claude Cowork uses Claude's remote custom connector path, not the local
+`claude_desktop_config.json` path. Custom connectors are reached from Anthropic's
+cloud infrastructure, so a server running only on `127.0.0.1` is not enough.
+
+Run the server with Streamable HTTP locally:
+
+```bash
+venv/bin/2do-mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
+```
+
+To print the same setup guidance from the CLI:
+
+```bash
+venv/bin/2do-mcp connect claude-cowork
+```
+
+The local endpoint is:
+
+```text
+http://127.0.0.1:8765/mcp
+```
+
+For Cowork, expose that endpoint through a trusted HTTPS tunnel or hosted
+deployment, then add the public URL as a custom connector in Claude. Do not
+share a tunneled 2Do MCP endpoint unless you are comfortable exposing your local
+task data through that tunnel.
+
+Claude's custom connector documentation is here:
+<https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp>
+
+### ChatGPT
+
+ChatGPT also connects to remote MCP servers, not directly to local stdio or
+localhost MCP servers.
+
+Run the server with Streamable HTTP locally:
+
+```bash
+venv/bin/2do-mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
+```
+
+To print the same setup guidance from the CLI:
+
+```bash
+venv/bin/2do-mcp connect chatgpt
+```
+
+The local endpoint is:
+
+```text
+http://127.0.0.1:8765/mcp
+```
+
+For ChatGPT, use a supported secure tunnel or hosted HTTPS endpoint, then create
+a custom MCP app in developer mode and scan the server's tools. Do not paste the
+local `127.0.0.1` URL into ChatGPT; it must be reachable by OpenAI.
+
+OpenAI's ChatGPT MCP app documentation is here:
+<https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt>
 
 ## Backup Behavior
 

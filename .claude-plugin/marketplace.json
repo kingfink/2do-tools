@@ -1,0 +1,30 @@
+{
+  "name": "2do-mcp",
+  "owner": {
+    "name": "Tim Finkel",
+    "url": "https://github.com/kingfink"
+  },
+  "metadata": {
+    "description": "Claude Code plugin marketplace for the 2Do MCP server.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "2do",
+      "description": "Read tasks from the local 2Do macOS app.",
+      "author": {
+        "name": "Tim Finkel",
+        "url": "https://github.com/kingfink"
+      },
+      "homepage": "https://github.com/kingfink/2do-mcp",
+      "tags": [
+        "2do",
+        "macos",
+        "mcp",
+        "productivity",
+        "tasks"
+      ],
+      "source": "./plugins/2do"
+    }
+  ]
+}
