@@ -152,6 +152,53 @@ claude mcp get 2do
 The repository also includes `.claude-plugin/plugin.json` for a shareable plugin
 proof of concept.
 
+### Claude Desktop
+
+Claude Desktop uses a separate MCP configuration from Claude Code. A server added
+to Claude Code with `.mcp.json` or `claude mcp add` does not automatically appear
+in the Claude Desktop chat app.
+
+For a manual local install, edit:
+
+```text
+~/Library/Application Support/Claude/claude_desktop_config.json
+```
+
+Add the server with an absolute path:
+
+```json
+{
+  "mcpServers": {
+    "2do": {
+      "type": "stdio",
+      "command": "/absolute/path/to/2do-mcp/venv/bin/2do-mcp",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+For this checkout, that is:
+
+```json
+{
+  "mcpServers": {
+    "2do": {
+      "type": "stdio",
+      "command": "/Users/tim/2do-mcp/venv/bin/2do-mcp",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving the file, then check the Desktop app's
+connector or developer settings to confirm the `2do` server loaded.
+
+For a more shareable Claude Desktop install, package this server as a Desktop
+Extension (`.mcpb`). Claude Desktop can install custom `.mcpb` files from
+Settings > Extensions > Advanced settings > Install Extension.
+
 ## Backup Behavior
 
 On startup, the server checks for
