@@ -18,6 +18,7 @@
   "support": "https://github.com/kingfink/2do-mcp/issues",
   "server": {
     "type": "binary",
+    "entry_point": "server.py",
     "mcp_config": {
       "command": "uvx",
       "args": [
