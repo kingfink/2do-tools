@@ -97,6 +97,61 @@ Make sure `2do-mcp` is on the `PATH` seen by the MCP client. For local
 development, use the absolute path to `venv/bin/2do-mcp` if the client does not
 inherit your shell environment.
 
+### Codex
+
+Install the server into Codex with an absolute path to the local checkout:
+
+```bash
+codex mcp add 2do -- /absolute/path/to/2do-mcp/venv/bin/2do-mcp serve
+```
+
+For this checkout, that is:
+
+```bash
+codex mcp add 2do -- /Users/tim/2do-mcp/venv/bin/2do-mcp serve
+```
+
+Check the configured server:
+
+```bash
+codex mcp get 2do
+```
+
+The repository also includes `.codex-plugin/plugin.json` for a shareable plugin
+proof of concept. The direct `codex mcp add` command is the fastest local
+install path while plugin distribution is being refined.
+
+### Claude Code
+
+Claude Code can use the repository's `.mcp.json` as a project-scoped MCP server
+configuration. From this checkout, run:
+
+```bash
+claude mcp list
+```
+
+If Claude Code shows the `2do` server as pending, approve it when prompted. You
+can also install the server explicitly with an absolute path:
+
+```bash
+claude mcp add 2do -- /absolute/path/to/2do-mcp/venv/bin/2do-mcp serve
+```
+
+For this checkout, that is:
+
+```bash
+claude mcp add 2do -- /Users/tim/2do-mcp/venv/bin/2do-mcp serve
+```
+
+Check the configured server:
+
+```bash
+claude mcp get 2do
+```
+
+The repository also includes `.claude-plugin/plugin.json` for a shareable plugin
+proof of concept.
+
 ## Backup Behavior
 
 On startup, the server checks for
