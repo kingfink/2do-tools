@@ -121,6 +121,17 @@ The repository also includes `.codex-plugin/plugin.json` for a shareable plugin
 proof of concept. The direct `codex mcp add` command is the fastest local
 install path while plugin distribution is being refined.
 
+For the marketplace proof of concept, make sure `2do-mcp` is installed on the
+user's `PATH`, then add this repository as a Codex plugin marketplace:
+
+```bash
+codex plugin marketplace add https://github.com/kingfink/2do-mcp
+```
+
+After adding the marketplace, install the `2do` plugin from the Codex plugin UI.
+The marketplace files live at `.agents/plugins/marketplace.json` and
+`plugins/2do/.codex-plugin/plugin.json`.
+
 ### Claude Code
 
 Claude Code can use the repository's `.mcp.json` as a project-scoped MCP server
@@ -151,6 +162,17 @@ claude mcp get 2do
 
 The repository also includes `.claude-plugin/plugin.json` for a shareable plugin
 proof of concept.
+
+For the marketplace proof of concept, make sure `2do-mcp` is installed on the
+user's `PATH`, then add this repository as a Claude Code plugin marketplace:
+
+```bash
+claude plugin marketplace add https://github.com/kingfink/2do-mcp
+claude plugin install 2do@2do-mcp
+```
+
+The marketplace files live at `.claude-plugin/marketplace.json` and
+`plugins/2do/.claude-plugin/plugin.json`.
 
 ### Claude Desktop
 
@@ -199,6 +221,16 @@ For a more shareable Claude Desktop install, package this server as a Desktop
 Extension (`.mcpb`). Claude Desktop can install custom `.mcpb` files from
 Settings > Extensions > Advanced settings > Install Extension.
 
+Build the MCPB proof of concept with:
+
+```bash
+scripts/build-mcpb.sh
+```
+
+The MCPB scaffold lives under `mcpb/`, and the script writes
+`dist/2do-mcp.mcpb`. Install the generated bundle by double-clicking it,
+dragging it into Claude Desktop, or using the Extensions settings.
+
 ### Claude Cowork
 
 Claude Cowork uses Claude's remote custom connector path, not the local
@@ -209,6 +241,12 @@ Run the server with Streamable HTTP locally:
 
 ```bash
 venv/bin/2do-mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
+```
+
+To print the same setup guidance from the CLI:
+
+```bash
+venv/bin/2do-mcp connect claude-cowork
 ```
 
 The local endpoint is:
@@ -234,6 +272,12 @@ Run the server with Streamable HTTP locally:
 
 ```bash
 venv/bin/2do-mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
+```
+
+To print the same setup guidance from the CLI:
+
+```bash
+venv/bin/2do-mcp connect chatgpt
 ```
 
 The local endpoint is:

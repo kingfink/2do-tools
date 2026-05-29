@@ -1,0 +1,12 @@
+{
+  "name": "2do",
+  "displayName": "2Do",
+  "version": "0.1.0",
+  "description": "Read tasks from the local 2Do macOS app.",
+  "author": {
+    "name": "Tim Finkel",
+    "url": "https://github.com/kingfink"
+  },
+  "homepage": "https://github.com/kingfink/2do-mcp",
+  "mcpServers": "./.mcp.json"
+}

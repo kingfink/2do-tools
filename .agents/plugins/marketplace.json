@@ -1,0 +1,20 @@
+{
+  "name": "2do-mcp",
+  "interface": {
+    "displayName": "2Do MCP"
+  },
+  "plugins": [
+    {
+      "name": "2do",
+      "source": {
+        "source": "local",
+        "path": "./plugins/2do"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
