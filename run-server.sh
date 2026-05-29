@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-exec .venv/bin/python server.py
+exec venv/bin/python server.py
