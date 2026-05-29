@@ -1,3 +1,5 @@
+import secrets
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -14,6 +16,10 @@ NULL_DUE_DATE_SENTINEL = 6406192800.0
 TAG_DELIMITER = "_~|$$@$$|~_"
 
 BACKUPS_DB_PATH = Path(__file__).parent / "backups" / "2do.db"
+
+SEARCH_ROOTS = [
+    Path.home() / "Library" / "Group Containers",
+]
 
 
 class TaskList(BaseModel):
@@ -212,6 +218,114 @@ def _count_tasks(filters: TaskFilters) -> int:
     return int(row["n"])
 
 
+def _ensure_snapshot_db_exists() -> None:
+    if BACKUPS_DB_PATH.exists():
+        return
+
+    _refresh_snapshot_db()
+
+
+def _discover_2do_db_candidates() -> list[Path]:
+    candidates: list[Path] = []
+
+    for root in SEARCH_ROOTS:
+        if root.exists():
+            candidates.extend(root.rglob("2do.db"))
+
+    return sorted(candidates)
+
+
+def _copy_candidate_db_to_staging(source_db: Path) -> Path:
+    token = secrets.token_hex(8)
+    staging_dir = BACKUPS_DB_PATH.parent / f".incoming-{token}"
+    staging_dir.mkdir(parents=True, exist_ok=False)
+
+    for source_file in source_db.parent.glob(f"{source_db.name}*"):
+        shutil.copy2(source_file, staging_dir / source_file.name)
+
+    return staging_dir
+
+
+def _validate_snapshot_db(staging_dir: Path) -> bool:
+    db_path = staging_dir / "2do.db"
+
+    if not db_path.exists():
+        return False
+
+    try:
+        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as connection:
+            integrity = connection.execute("PRAGMA integrity_check;").fetchone()
+            if not integrity or integrity[0] != "ok":
+                return False
+
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    """
+                        SELECT 
+                            name
+                        FROM sqlite_master
+                        WHERE type = 'table'
+                    """
+                )
+            }
+
+            required_tables = {"tasks", "calendars", "tags"}
+            if not required_tables.issubset(tables):
+                return False
+
+            task_columns = {row[1] for row in connection.execute("PRAGMA table_info(tasks);")}
+
+            required_task_columns = {"primid", "uid", "title"}
+            return required_task_columns.issubset(task_columns)
+
+    except sqlite3.Error:
+        return False
+
+
+def _promote_snapshot_db(staging_dir: Path) -> None:
+    BACKUPS_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    for existing_file in BACKUPS_DB_PATH.parent.glob("2do.db*"):
+        existing_file.unlink()
+
+    for staged_file in staging_dir.glob("2do.db*"):
+        shutil.move(str(staged_file), BACKUPS_DB_PATH.parent / staged_file.name)
+
+    staging_dir.rmdir()
+
+
+def _refresh_snapshot_db():
+    BACKUPS_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    valid_staging_dirs: list[tuple[Path, Path]] = []
+
+    try:
+        for candidate in _discover_2do_db_candidates():
+            staging_dir = _copy_candidate_db_to_staging(candidate)
+
+            if _validate_snapshot_db(staging_dir):
+                valid_staging_dirs.append((candidate, staging_dir))
+            else:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+
+        if not valid_staging_dirs:
+            raise RuntimeError(
+                "No valid 2Do database found after copying candidates into backups/."
+            )
+
+        if len(valid_staging_dirs) > 1:
+            sources = "\n".join(str(source) for source, _ in valid_staging_dirs)
+            raise RuntimeError(f"Multiple valid 2Do databases found:\n{sources}")
+
+        _, staging_dir = valid_staging_dirs[0]
+        _promote_snapshot_db(staging_dir)
+
+    finally:
+        for incoming_dir in BACKUPS_DB_PATH.parent.glob(".incoming-*"):
+            shutil.rmtree(incoming_dir, ignore_errors=True)
+
+
 @mcp.tool()
 def get_completed_tasks() -> list[Task]:
     """Get the list of completed tasks in 2Do"""
@@ -236,5 +350,11 @@ def count_open_tasks() -> int:
     return _count_tasks(TaskFilters(completed=False))
 
 
+@mcp.tool()
+def refresh_snapshot_db() -> None:
+    _refresh_snapshot_db()
+
+
 if __name__ == "__main__":
+    _ensure_snapshot_db_exists()
     mcp.run()
