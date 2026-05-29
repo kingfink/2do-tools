@@ -19,6 +19,25 @@ NULL_DUE_DATE_SENTINEL = 6406192800.0
 
 TAG_DELIMITER = "_~|$$@$$|~_"
 
+REQUIRED_BACKUP_COLUMNS = {
+    "tasks": [
+        "archived",
+        "calendaruid",
+        "completeddate",
+        "creationstamp",
+        "duedate",
+        "iscompleted",
+        "isdeleted",
+        "notes",
+        "primid",
+        "tags",
+        "title",
+        "uid",
+    ],
+    "calendars": ["title", "uid"],
+    "tags": ["isdeleted", "tag", "uid"],
+}
+
 BACKUPS_DB_DIR = backups_db_dir()
 BACKUPS_DB_PATH = backups_db_path()
 BACKUP_METADATA_PATH = BACKUPS_DB_DIR / "metadata.json"
@@ -82,6 +101,10 @@ def _to_2do_timestamp(value: datetime) -> float:
     return value.timestamp()
 
 
+def _tag_filter_token(tag_id: str) -> str:
+    return f"{TAG_DELIMITER}{tag_id}{TAG_DELIMITER}"
+
+
 def _from_2do_timestamp(
     value: float | int | None, *, null_due_date: bool = False
 ) -> datetime | None:
@@ -113,8 +136,8 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
         params.append(filters.list_id)
 
     if filters.tag_id is not None:
-        clauses.append("t.tags LIKE ?")
-        params.append(f"%{filters.tag_id}%")
+        clauses.append("instr(t.tags, ?) > 0")
+        params.append(_tag_filter_token(filters.tag_id))
 
     if _has_due_date_filter(filters):
         clauses.append("t.duedate != ?")
@@ -374,14 +397,16 @@ def _validate_backup_db(staging_dir: Path) -> bool:
                 )
             }
 
-            required_tables = {"tasks", "calendars", "tags"}
+            required_tables = set(REQUIRED_BACKUP_COLUMNS)
             if not required_tables.issubset(tables):
                 return False
 
-            task_columns = {row[1] for row in connection.execute("PRAGMA table_info(tasks);")}
+            for table, required_columns in REQUIRED_BACKUP_COLUMNS.items():
+                columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table});")}
+                if not set(required_columns).issubset(columns):
+                    return False
 
-            required_task_columns = {"primid", "uid", "title"}
-            return required_task_columns.issubset(task_columns)
+            return True
 
     except sqlite3.Error:
         return False

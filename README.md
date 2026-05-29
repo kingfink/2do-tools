@@ -94,7 +94,7 @@ Otherwise, refreshes follow this flow:
    `~/Library/Application Support/2do-mcp/backups/.incoming-*` directory.
 2. Validate the copied database with SQLite `PRAGMA integrity_check`.
 3. Confirm the expected `tasks`, `calendars`, and `tags` tables exist.
-4. Confirm the minimum required task columns exist.
+4. Confirm every column used by task, calendar, and tag queries exists.
 5. Promote exactly one valid staged copy into the app support backup directory.
 
 If no valid database is found, or if multiple valid 2Do databases are found, the
@@ -118,8 +118,6 @@ venv/bin/python -m ruff format --check .
 
 ## TODOs
 
-- [ ] Validate every SQLite column used by task, calendar, and tag queries before accepting a backup.
-- [ ] Make tag filtering delimiter-aware instead of using substring `LIKE` matching.
 - [ ] Add richer task tools and filters:
   - [ ] list calendars
   - [ ] list tags
