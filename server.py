@@ -1,3 +1,4 @@
+import plistlib
 import secrets
 import shutil
 import sqlite3
@@ -15,10 +16,20 @@ NULL_DUE_DATE_SENTINEL = 6406192800.0
 
 TAG_DELIMITER = "_~|$$@$$|~_"
 
-BACKUPS_DB_PATH = Path(__file__).parent / "backups" / "2do.db"
+BACKUPS_DB_DIR = Path(__file__).parent / "backups"
+BACKUPS_DB_PATH = BACKUPS_DB_DIR / "2do.db"
 
-SEARCH_ROOTS = [
+GROUP_CONTAINER_ROOTS = [
     Path.home() / "Library" / "Group Containers",
+]
+
+GROUP_CONTAINER_IDS = [
+    "EKT6323JY3.com.guidedways",
+]
+
+APP_BUNDLE_PATHS = [
+    Path("/Applications/2Do.app"),
+    Path.home() / "Applications" / "2Do.app",
 ]
 
 
@@ -218,26 +229,99 @@ def _count_tasks(filters: TaskFilters) -> int:
     return int(row["n"])
 
 
-def _ensure_snapshot_db_exists() -> None:
+def _ensure_backup_db_exists() -> None:
     if BACKUPS_DB_PATH.exists():
         return
 
-    _refresh_snapshot_db()
+    _refresh_backup_db()
 
 
-def _discover_2do_db_candidates() -> list[Path]:
+def _path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
+def _append_existing_candidate(
+    candidates: list[Path], seen_paths: set[str], candidate: Path
+) -> None:
+    candidate_key = str(candidate)
+    if candidate_key in seen_paths:
+        return
+
+    if _path_exists(candidate):
+        candidates.append(candidate)
+        seen_paths.add(candidate_key)
+
+
+def _unique_strings(values: list[str]) -> list[str]:
+    unique_values: list[str] = []
+    seen_values: set[str] = set()
+
+    for value in values:
+        if value in seen_values:
+            continue
+
+        unique_values.append(value)
+        seen_values.add(value)
+
+    return unique_values
+
+
+def _discover_group_container_ids_from_app_bundles() -> list[str]:
+    group_container_ids: list[str] = []
+
+    for app_bundle_path in APP_BUNDLE_PATHS:
+        info_plist_path = app_bundle_path / "Contents" / "Info.plist"
+        if not _path_exists(info_plist_path):
+            continue
+
+        try:
+            with info_plist_path.open("rb") as info_plist:
+                app_info = plistlib.load(info_plist)
+        except (OSError, ValueError, plistlib.InvalidFileException):
+            continue
+
+        shared_defaults_key = app_info.get("BeehiveSharedDefaultsKey")
+        if isinstance(shared_defaults_key, str) and shared_defaults_key:
+            group_container_ids.append(shared_defaults_key)
+
+    return _unique_strings(group_container_ids)
+
+
+def _append_group_container_id_candidates(
+    candidates: list[Path], seen_paths: set[str], group_container_ids: list[str]
+) -> None:
+    for root in GROUP_CONTAINER_ROOTS:
+        for group_container_id in group_container_ids:
+            _append_existing_candidate(
+                candidates,
+                seen_paths,
+                root / group_container_id / "2do.db",
+            )
+
+
+def _discover_candidate_dbs() -> list[Path]:
+    seen_paths: set[str] = set()
     candidates: list[Path] = []
 
-    for root in SEARCH_ROOTS:
-        if root.exists():
-            candidates.extend(root.rglob("2do.db"))
+    group_container_ids = _unique_strings(
+        GROUP_CONTAINER_IDS + _discover_group_container_ids_from_app_bundles()
+    )
 
-    return sorted(candidates)
+    _append_group_container_id_candidates(
+        candidates,
+        seen_paths,
+        group_container_ids,
+    )
+
+    return candidates
 
 
 def _copy_candidate_db_to_staging(source_db: Path) -> Path:
     token = secrets.token_hex(8)
-    staging_dir = BACKUPS_DB_PATH.parent / f".incoming-{token}"
+    staging_dir = BACKUPS_DB_DIR / f".incoming-{token}"
     staging_dir.mkdir(parents=True, exist_ok=False)
 
     for source_file in source_db.parent.glob(f"{source_db.name}*"):
@@ -246,7 +330,7 @@ def _copy_candidate_db_to_staging(source_db: Path) -> Path:
     return staging_dir
 
 
-def _validate_snapshot_db(staging_dir: Path) -> bool:
+def _validate_backup_db(staging_dir: Path) -> bool:
     db_path = staging_dir / "2do.db"
 
     if not db_path.exists():
@@ -283,28 +367,28 @@ def _validate_snapshot_db(staging_dir: Path) -> bool:
         return False
 
 
-def _promote_snapshot_db(staging_dir: Path) -> None:
-    BACKUPS_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _promote_backup_db(staging_dir: Path) -> None:
+    BACKUPS_DB_DIR.mkdir(parents=True, exist_ok=True)
 
-    for existing_file in BACKUPS_DB_PATH.parent.glob("2do.db*"):
+    for existing_file in BACKUPS_DB_DIR.glob("2do.db*"):
         existing_file.unlink()
 
     for staged_file in staging_dir.glob("2do.db*"):
-        shutil.move(str(staged_file), BACKUPS_DB_PATH.parent / staged_file.name)
+        shutil.move(str(staged_file), BACKUPS_DB_DIR / staged_file.name)
 
     staging_dir.rmdir()
 
 
-def _refresh_snapshot_db():
-    BACKUPS_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _refresh_backup_db():
+    BACKUPS_DB_DIR.mkdir(parents=True, exist_ok=True)
 
     valid_staging_dirs: list[tuple[Path, Path]] = []
 
     try:
-        for candidate in _discover_2do_db_candidates():
+        for candidate in _discover_candidate_dbs():
             staging_dir = _copy_candidate_db_to_staging(candidate)
 
-            if _validate_snapshot_db(staging_dir):
+            if _validate_backup_db(staging_dir):
                 valid_staging_dirs.append((candidate, staging_dir))
             else:
                 shutil.rmtree(staging_dir, ignore_errors=True)
@@ -319,10 +403,10 @@ def _refresh_snapshot_db():
             raise RuntimeError(f"Multiple valid 2Do databases found:\n{sources}")
 
         _, staging_dir = valid_staging_dirs[0]
-        _promote_snapshot_db(staging_dir)
+        _promote_backup_db(staging_dir)
 
     finally:
-        for incoming_dir in BACKUPS_DB_PATH.parent.glob(".incoming-*"):
+        for incoming_dir in BACKUPS_DB_DIR.glob(".incoming-*"):
             shutil.rmtree(incoming_dir, ignore_errors=True)
 
 
@@ -351,10 +435,10 @@ def count_open_tasks() -> int:
 
 
 @mcp.tool()
-def refresh_snapshot_db() -> None:
-    _refresh_snapshot_db()
+def refresh_backup_db() -> None:
+    _refresh_backup_db()
 
 
 if __name__ == "__main__":
-    _ensure_snapshot_db_exists()
+    _ensure_backup_db_exists()
     mcp.run()
