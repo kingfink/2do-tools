@@ -30,7 +30,19 @@ You need [`uv`](https://docs.astral.sh/uv/) (a single self-contained binary):
 curl -LsSf https://astral.sh/uv/install.sh | sh   # or: brew install uv
 ```
 
-Then add this MCP server to your client. The same command works everywhere — no clone, no virtualenv, no PATH setup. `uv` fetches and caches the server from GitHub on first run.
+Then add the server to your client. Each client has a one-step install:
+
+| Client | Simplest install |
+| --- | --- |
+| Claude Code | `claude plugin marketplace add kingfink/2do-mcp` then `claude plugin install 2do@2do-mcp` |
+| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-mcp@v0.1.0 2do-mcp serve` |
+| Claude Desktop | Download `2do-mcp.mcpb` from the [latest release](https://github.com/kingfink/2do-mcp/releases/latest) and double-click it |
+
+Every route runs the same thing under the hood — `uv` fetches and caches the server from GitHub on first run. No clone, no virtualenv, no PATH setup.
+
+> These routes require the `v0.1.0` release. Until it is published, install by hand with the config below.
+
+For any other client, or to configure it by hand, use this config:
 
 ```json
 {
@@ -49,12 +61,6 @@ Then add this MCP server to your client. The same command works everywhere — n
 }
 ```
 
-| Client | Where the config goes |
-| --- | --- |
-| Claude Code | The project's `.mcp.json` (already configured in this repo), or run `claude mcp add-json 2do '{"type":"stdio","command":"uvx","args":["--from","git+https://github.com/kingfink/2do-mcp@v0.1.0","2do-mcp","serve"]}'`. |
-| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-mcp@v0.1.0 2do-mcp serve` |
-| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json`, then restart Claude Desktop. |
-
 Upgrade later by bumping the `@v0.1.0` tag to a newer release.
 
 Check your setup:
@@ -67,37 +73,29 @@ If the server cannot find the 2Do database, make sure 2Do has been opened at lea
 
 ## Advanced
 
-### Claude Desktop one-click bundle (MCPB)
+### Claude Desktop bundle (MCPB)
 
-Claude Desktop can install a `.mcpb` bundle from Settings > Extensions > Advanced settings > Install Extension. The bundle still launches the server via `uvx`, so `uv` must be installed.
+The simplest path is to download the prebuilt `2do-mcp.mcpb` from the [latest release](https://github.com/kingfink/2do-mcp/releases/latest) and double-click it (or drag it into Settings > Extensions > Advanced settings > Install Extension). The bundle launches the server via `uvx`, so `uv` must be installed.
 
-Build it with:
+To build the bundle yourself from a checkout:
 
 ```bash
 npm install -g @anthropic-ai/mcpb
 scripts/build-mcpb.sh
 ```
 
-The script writes `dist/2do-mcp.mcpb`. Install the bundle by double-clicking it, dragging it into Claude Desktop, or using the Extensions settings.
+The script writes `dist/2do-mcp.mcpb`.
 
-### Plugin marketplaces
+### Claude Code plugin marketplace
 
-This repo doubles as a plugin marketplace for Claude Code and Codex. The plugin definition lives under `plugins/2do/`.
-
-Claude Code:
+This repo doubles as a Claude Code plugin marketplace. The plugin definition lives under `plugins/2do/`.
 
 ```bash
-claude plugin marketplace add https://github.com/kingfink/2do-mcp
+claude plugin marketplace add kingfink/2do-mcp
 claude plugin install 2do@2do-mcp
 ```
 
-Codex:
-
-```bash
-codex plugin marketplace add https://github.com/kingfink/2do-mcp
-```
-
-Then install the `2do` plugin from the Codex plugin UI.
+For Codex, use the `codex mcp add` command from the Install table above — Codex installs MCP servers directly rather than from a plugin marketplace.
 
 ### Remote connectors (Claude Cowork, ChatGPT)
 
