@@ -690,6 +690,80 @@ def get_tasks(
 
 
 @mcp.tool()
+def get_overdue_tasks(limit: int = 1000) -> list[Task]:
+    """List open tasks due before today."""
+    return _get_tasks(
+        TaskFilters(
+            completed=False,
+            due_before=_local_start_of_day(_local_today()),
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_inbox_tasks(limit: int = 1000) -> list[Task]:
+    """List open tasks in the Inbox list."""
+    return _get_tasks(TaskFilters(completed=False, list_name="Inbox", limit=limit))
+
+
+@mcp.tool()
+def get_tasks_due_today(limit: int = 1000) -> list[Task]:
+    """List open tasks due today."""
+    due_from, due_before = _today_window()
+    return _get_tasks(
+        TaskFilters(
+            completed=False,
+            due_from=due_from,
+            due_before=due_before,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_tasks_due_this_week(limit: int = 1000) -> list[Task]:
+    """List open tasks due during the current calendar week."""
+    due_from, due_before = _calendar_week_window()
+    return _get_tasks(
+        TaskFilters(
+            completed=False,
+            due_from=due_from,
+            due_before=due_before,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_tasks_completed_today(limit: int = 1000) -> list[Task]:
+    """List tasks completed today."""
+    completed_from, completed_before = _today_window()
+    return _get_tasks(
+        TaskFilters(
+            completed=True,
+            completed_from=completed_from,
+            completed_before=completed_before,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_tasks_completed_this_week(limit: int = 1000) -> list[Task]:
+    """List tasks completed during the current calendar week."""
+    completed_from, completed_before = _calendar_week_window()
+    return _get_tasks(
+        TaskFilters(
+            completed=True,
+            completed_from=completed_from,
+            completed_before=completed_before,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
 def get_completed_tasks() -> list[Task]:
     """Get the list of completed tasks in 2Do"""
     return _get_tasks(TaskFilters(completed=True))
