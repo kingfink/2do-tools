@@ -1,9 +1,14 @@
 {
-    "mcpServers": {
-      "2do": {
-        "type": "stdio",
-        "command": "2do-mcp",
-        "args": ["serve"]
-      }
+  "mcpServers": {
+    "2do": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/kingfink/2do-mcp@v0.1.0",
+        "2do-mcp",
+        "serve"
+      ]
     }
   }
+}

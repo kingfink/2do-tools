@@ -17,20 +17,16 @@
   "documentation": "https://github.com/kingfink/2do-mcp#readme",
   "support": "https://github.com/kingfink/2do-mcp/issues",
   "server": {
-    "type": "uv",
+    "type": "binary",
     "entry_point": "server.py",
     "mcp_config": {
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "run",
-        "--project",
-        "${__dirname}",
-        "python",
-        "${__dirname}/server.py"
-      ],
-      "env": {
-        "PYTHONPATH": "${__dirname}/src"
-      }
+        "--from",
+        "git+https://github.com/kingfink/2do-mcp@v0.1.0",
+        "2do-mcp",
+        "serve"
+      ]
     }
   },
   "tools": [
