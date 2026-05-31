@@ -14,9 +14,23 @@ queries from that copy. It does not write to the original 2Do database.
 
 ## Tools
 
-- `get_open_tasks`: list open, non-deleted, non-archived tasks.
+- `list_lists`: list 2Do lists.
+- `list_tags`: list non-deleted 2Do tags.
+- `get_tasks`: search and filter tasks by list, tag, due date range,
+  completion date range, completion state, and query text.
+- `get_overdue_tasks`: list open tasks due before today.
+- `get_inbox_tasks`: list open tasks in the Inbox list.
+- `get_tasks_due_today`: list open tasks due today.
+- `get_tasks_due_this_week`: list open tasks due during the current calendar
+  week.
+- `get_tasks_completed_today`: list tasks completed today.
+- `get_tasks_completed_this_week`: list tasks completed during the current
+  calendar week.
+- `get_open_tasks`: compatibility shortcut for open, non-deleted,
+  non-archived tasks.
 - `count_open_tasks`: count open, non-deleted, non-archived tasks.
-- `get_completed_tasks`: list completed, non-deleted, non-archived tasks.
+- `get_completed_tasks`: compatibility shortcut for completed, non-deleted,
+  non-archived tasks.
 - `count_completed_tasks`: count completed, non-deleted, non-archived tasks.
 - `refresh_backup_db`: find the local 2Do database again, copy it into
   the app support backup directory, validate it, and replace the previous
@@ -185,12 +199,5 @@ uv run ruff format --check .
 
 ## TODOs
 
-- [ ] Add richer task tools and filters:
-  - [ ] list calendars
-  - [ ] list tags
-  - [ ] get overdue tasks
-  - [ ] get tasks due today
-  - [ ] get upcoming tasks
-  - [ ] search or filter tasks by list, tag, due range, and completion state
 - [ ] Add the ability to add a new task (through the email relay to keep things read only)
 - [ ] Add tests for timestamp sentinel handling, tag parsing, SQL filter construction, schema validation, and backup promotion.

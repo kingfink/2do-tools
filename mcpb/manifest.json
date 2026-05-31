@@ -31,8 +31,44 @@
   },
   "tools": [
     {
+      "name": "list_lists",
+      "description": "List 2Do lists."
+    },
+    {
+      "name": "list_tags",
+      "description": "List non-deleted 2Do tags."
+    },
+    {
+      "name": "get_tasks",
+      "description": "Search and filter 2Do tasks."
+    },
+    {
+      "name": "get_overdue_tasks",
+      "description": "List open tasks due before today."
+    },
+    {
+      "name": "get_inbox_tasks",
+      "description": "List open tasks in the Inbox list."
+    },
+    {
+      "name": "get_tasks_due_today",
+      "description": "List open tasks due today."
+    },
+    {
+      "name": "get_tasks_due_this_week",
+      "description": "List open tasks due during the current calendar week."
+    },
+    {
+      "name": "get_tasks_completed_today",
+      "description": "List tasks completed today."
+    },
+    {
+      "name": "get_tasks_completed_this_week",
+      "description": "List tasks completed during the current calendar week."
+    },
+    {
       "name": "get_open_tasks",
-      "description": "List open, non-deleted, non-archived tasks."
+      "description": "Compatibility shortcut for open, non-deleted, non-archived tasks."
     },
     {
       "name": "count_open_tasks",
@@ -40,7 +76,7 @@
     },
     {
       "name": "get_completed_tasks",
-      "description": "List completed, non-deleted, non-archived tasks."
+      "description": "Compatibility shortcut for completed, non-deleted, non-archived tasks."
     },
     {
       "name": "count_completed_tasks",

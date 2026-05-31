@@ -765,25 +765,25 @@ def get_tasks_completed_this_week(limit: int = 1000) -> list[Task]:
 
 @mcp.tool()
 def get_completed_tasks() -> list[Task]:
-    """Get the list of completed tasks in 2Do"""
-    return _get_tasks(TaskFilters(completed=True))
+    """List completed, non-deleted, non-archived tasks."""
+    return get_tasks(completed=True)
 
 
 @mcp.tool()
 def count_completed_tasks() -> int:
-    """Count the number of completed tasks in 2Do"""
+    """Count completed, non-deleted, non-archived tasks."""
     return _count_tasks(TaskFilters(completed=True))
 
 
 @mcp.tool()
 def get_open_tasks() -> list[Task]:
-    """Get the list of open tasks in 2Do"""
-    return _get_tasks(TaskFilters(completed=False))
+    """List open, non-deleted, non-archived tasks."""
+    return get_tasks(completed=False)
 
 
 @mcp.tool()
 def count_open_tasks() -> int:
-    """Count the number of open tasks in 2Do"""
+    """Count open, non-deleted, non-archived tasks."""
     return _count_tasks(TaskFilters(completed=False))
 
 
