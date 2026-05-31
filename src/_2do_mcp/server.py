@@ -143,6 +143,10 @@ def _tag_filter_token(tag_id: str) -> str:
     return f"{TAG_DELIMITER}{tag_id}{TAG_DELIMITER}"
 
 
+def _query_pattern(value: str) -> str:
+    return f"%{value}%"
+
+
 def _from_2do_timestamp(
     value: float | int | None, *, null_due_date: bool = False
 ) -> datetime | None:
@@ -172,12 +176,30 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
     if filters.list_id is not None:
         clauses.append("t.calendaruid = ?")
         params.append(filters.list_id)
+    elif filters.list_name is not None:
+        clauses.append("lower(coalesce(c.title, '')) = lower(?)")
+        params.append(filters.list_name)
 
     if filters.tag_id is not None:
         clauses.append("instr(t.tags, ?) > 0")
         params.append(_tag_filter_token(filters.tag_id))
+    elif filters.tag_name is not None:
+        clauses.append(
+            """
+            exists (
+                select 1
+                from tags tag
+                where tag.isdeleted = 0
+                  and lower(coalesce(tag.tag, '')) = lower(?)
+                  and instr(t.tags, ? || tag.uid || ?) > 0
+            )
+            """
+        )
+        params.extend([filters.tag_name, TAG_DELIMITER, TAG_DELIMITER])
 
     if _has_due_date_filter(filters):
+        clauses.append("t.duedate is not null")
+        clauses.append("t.duedate != 0")
         clauses.append("t.duedate != ?")
         params.append(NULL_DUE_DATE_SENTINEL)
 
@@ -188,6 +210,48 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
     if filters.due_before is not None:
         clauses.append("t.duedate < ?")
         params.append(_to_2do_timestamp(filters.due_before))
+
+    if _has_completed_date_filter(filters):
+        clauses.append("t.completeddate is not null")
+        clauses.append("t.completeddate != 0")
+
+    if filters.completed_from is not None:
+        clauses.append("t.completeddate >= ?")
+        params.append(_to_2do_timestamp(filters.completed_from))
+
+    if filters.completed_before is not None:
+        clauses.append("t.completeddate < ?")
+        params.append(_to_2do_timestamp(filters.completed_before))
+
+    query = filters.query.strip() if filters.query is not None else ""
+    if query:
+        pattern = _query_pattern(query)
+        clauses.append(
+            """
+            (
+                lower(coalesce(t.title, '')) like lower(?)
+                or lower(coalesce(t.notes, '')) like lower(?)
+                or lower(coalesce(c.title, '')) like lower(?)
+                or exists (
+                    select 1
+                    from tags tag
+                    where tag.isdeleted = 0
+                      and lower(coalesce(tag.tag, '')) like lower(?)
+                      and instr(t.tags, ? || tag.uid || ?) > 0
+                )
+            )
+            """
+        )
+        params.extend(
+            [
+                pattern,
+                pattern,
+                pattern,
+                pattern,
+                TAG_DELIMITER,
+                TAG_DELIMITER,
+            ]
+        )
 
     if not clauses:
         return "1 = 1", []
@@ -286,9 +350,10 @@ def _count_tasks(filters: TaskFilters) -> int:
     with _connect() as connection:
         row = connection.execute(
             f"""
-                select 
+                select
                     count(1) as n
                 from tasks t
+                join calendars c on c.uid = t.calendaruid
                 where {where_clause}
             """,
             params,
