@@ -4,7 +4,7 @@ import secrets
 import shutil
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 from fastmcp import FastMCP
@@ -87,14 +87,52 @@ class TaskFilters:
     include_archived: bool = False
     completed: bool | None = None
     list_id: str | None = None
+    list_name: str | None = None
     tag_id: str | None = None
+    tag_name: str | None = None
     due_from: datetime | None = None
     due_before: datetime | None = None
+    completed_from: datetime | None = None
+    completed_before: datetime | None = None
+    query: str | None = None
     limit: int = 1000
 
 
 def _has_due_date_filter(filters: TaskFilters) -> bool:
     return filters.due_from is not None or filters.due_before is not None
+
+
+def _has_completed_date_filter(filters: TaskFilters) -> bool:
+    return filters.completed_from is not None or filters.completed_before is not None
+
+
+def _local_today() -> date:
+    return datetime.now().astimezone().date()
+
+
+def _local_start_of_day(value: date) -> datetime:
+    return datetime.combine(value, time.min).astimezone()
+
+
+def _today_window() -> tuple[datetime, datetime]:
+    today = _local_today()
+    return _local_start_of_day(today), _local_start_of_day(today + timedelta(days=1))
+
+
+def _calendar_week_window() -> tuple[datetime, datetime]:
+    today = _local_today()
+    week_start = today - timedelta(days=today.weekday())
+    return _local_start_of_day(week_start), _local_start_of_day(week_start + timedelta(days=7))
+
+
+def _date_range_bounds(
+    from_date: date | None,
+    before_date: date | None,
+) -> tuple[datetime | None, datetime | None]:
+    return (
+        _local_start_of_day(from_date) if from_date is not None else None,
+        _local_start_of_day(before_date) if before_date is not None else None,
+    )
 
 
 def _to_2do_timestamp(value: datetime) -> float:
