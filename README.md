@@ -162,8 +162,8 @@ Otherwise, refreshes follow this flow:
    `2do.db-wal` and `2do.db-shm`, into a temporary
    `~/Library/Application Support/2do-mcp/backups/.incoming-*` directory.
 2. Validate the copied database with SQLite `PRAGMA integrity_check`.
-3. Confirm the expected `tasks`, `calendars`, and `tags` tables exist.
-4. Confirm every column used by task, calendar, and tag queries exists.
+3. Confirm the expected task, list, and tag storage exists.
+4. Confirm every column used by task, list, and tag queries exists.
 5. Promote exactly one valid staged copy into the app support backup directory.
 
 If no valid database is found, or if multiple valid 2Do databases are found, the
