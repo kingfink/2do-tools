@@ -42,14 +42,31 @@ fi
 echo "Building MCPB bundle..."
 scripts/build-mcpb.sh
 
-echo "Tagging $tag..."
-git tag -a "$tag" -m "2do-mcp $tag"
-git push origin "$tag"
+# Create the tag locally, but do NOT push it until the release succeeds. This
+# avoids leaving a pushed-but-release-less tag on the remote if gh fails — a
+# dangling tag that would make re-running this script error on `git tag`.
+# Both steps are idempotent so a failed run can simply be retried.
+if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+  echo "Local tag $tag already exists; reusing it."
+else
+  echo "Tagging $tag..."
+  git tag -a "$tag" -m "2do-mcp $tag"
+fi
 
 echo "Creating GitHub release $tag with the bundle attached..."
-gh release create "$tag" \
-  "$repo_root/dist/2do-mcp.mcpb" \
-  --title "2do-mcp $tag" \
-  --generate-notes
+if gh release view "$tag" >/dev/null 2>&1; then
+  echo "Release $tag already exists; uploading/overwriting the bundle asset."
+  gh release upload "$tag" "$repo_root/dist/2do-mcp.mcpb" --clobber
+else
+  # gh release create pushes the tag to the remote as part of publishing, so
+  # the tag only reaches origin once the release itself is created.
+  gh release create "$tag" \
+    "$repo_root/dist/2do-mcp.mcpb" \
+    --title "2do-mcp $tag" \
+    --generate-notes
+fi
+
+# Ensure the tag is on the remote (no-op if gh release create already pushed it).
+git push origin "$tag"
 
 echo "Done. Release $tag published with dist/2do-mcp.mcpb attached."
