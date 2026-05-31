@@ -266,6 +266,41 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+def _get_lists() -> list[TaskList]:
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            select
+                uid as list_id
+                , title as list_name
+            from calendars
+            where uid is not null
+              and uid != ''
+            order by lower(coalesce(title, '')), uid
+            """
+        ).fetchall()
+
+    return [TaskList(id=row["list_id"], name=row["list_name"] or "") for row in rows]
+
+
+def _get_tags() -> list[Tag]:
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            select
+                uid as tag_id
+                , tag as tag_name
+            from tags
+            where isdeleted = 0
+              and uid is not null
+              and uid != ''
+            order by lower(coalesce(tag, '')), uid
+            """
+        ).fetchall()
+
+    return [Tag(id=row["tag_id"], name=row["tag_name"] or "") for row in rows]
+
+
 def _get_tags_by_id(connection: sqlite3.Connection) -> dict[str, Tag]:
     rows = connection.execute(
         """
@@ -602,6 +637,56 @@ def refresh_backup() -> bool:
     finally:
         for incoming_dir in BACKUPS_DB_DIR.glob(".incoming-*"):
             shutil.rmtree(incoming_dir, ignore_errors=True)
+
+
+@mcp.tool()
+def list_lists() -> list[TaskList]:
+    """List 2Do lists."""
+    return _get_lists()
+
+
+@mcp.tool()
+def list_tags() -> list[Tag]:
+    """List non-deleted 2Do tags."""
+    return _get_tags()
+
+
+@mcp.tool()
+def get_tasks(
+    completed: bool | None = None,
+    list_id: str | None = None,
+    list_name: str | None = None,
+    tag_id: str | None = None,
+    tag_name: str | None = None,
+    due_from: date | None = None,
+    due_before: date | None = None,
+    completed_from: date | None = None,
+    completed_before: date | None = None,
+    query: str | None = None,
+    limit: int = 1000,
+) -> list[Task]:
+    """Search and filter 2Do tasks."""
+    due_from_bound, due_before_bound = _date_range_bounds(due_from, due_before)
+    completed_from_bound, completed_before_bound = _date_range_bounds(
+        completed_from,
+        completed_before,
+    )
+
+    return _get_tasks(
+        TaskFilters(
+            completed=completed,
+            list_id=list_id,
+            list_name=list_name,
+            tag_id=tag_id,
+            tag_name=tag_name,
+            due_from=due_from_bound,
+            due_before=due_before_bound,
+            completed_from=completed_from_bound,
+            completed_before=completed_before_bound,
+            query=query,
+            limit=limit,
+        )
+    )
 
 
 @mcp.tool()
