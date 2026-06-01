@@ -233,12 +233,14 @@ bundle asset, and creates the remote tag at the current `master` commit.
 ## TODOs
 
 - [ ] Incorporate URL schemes functionality as documented [here](https://www.2doapp.com/docs/macos/url-schemes)
-  - [ ] `add` a task (only, not a project or checklist) with a `task` (title, required), `note` (optional), `forlist` (optional), `type` (always 0, for a regular task), `due` (optional), `repeat` (optional), `tags` (optional). Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#add)
-    - [ ] `addnewtask` to open the interface to add a new task instead of actually creating the task or prepopulating info
-    - [ ] apply the param `usequickentry=1` to open the interface to add a new task, prepopulated with the fields from above
-  - [ ] `showtask` to open a task. For example include a link in what the tools return. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#showtask)
-  - [ ] `completetasks` to complete a single task (only one, not bulk). Mark a task as complete (with confirmation). Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#completetasks)
-  - [ ] `showlist` to open a list. For example include a link in what the tools return. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#opening-lists)
-  - [ ] `search` to open a search in 2Do. Optional alternative/complement to our search functionality. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#search)
+  - New tools
+    - [ ] `add` a task (only, not a project or checklist) with a `task` (title, required), `note` (optional), `forlist` (optional), `type` (always 0, for a regular task), `due` (optional), `repeat` (optional), `tags` (optional). Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#add)
+      - [ ] `addnewtask` to open the interface to add a new task instead of actually creating the task or prepopulating info
+      - [ ] apply the param `usequickentry=1` to open the interface to add a new task, prepopulated with the fields from above
+    - [ ] `completetasks` to complete a single task (only one, not bulk). Mark a task as complete (with confirmation). Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#completetasks)
+  - Enrich existing tools
+    - [ ] `showtask` to open a task. For example include a link in what the tools return. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#showtask)
+    - [ ] `showlist` to open a list. For example include a link in what the tools return. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#opening-lists)
+    - [ ] `search` to open a search in 2Do. Optional alternative/complement to our search functionality. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#search)
 - [ ] Surface whether tasks are recurring and on what schedule
 - [ ] Add tests for timestamp sentinel handling, tag parsing, SQL filter construction, schema validation, and backup promotion.
