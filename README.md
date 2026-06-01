@@ -233,4 +233,5 @@ bundle asset, and creates the remote tag at the current `master` commit.
 ## TODOs
 
 - [ ] Add the ability to add a new task (through the email relay to keep things read only)
+- [ ] Surface whether tasks are recurring and on what schedule
 - [ ] Add tests for timestamp sentinel handling, tag parsing, SQL filter construction, schema validation, and backup promotion.
