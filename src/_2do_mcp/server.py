@@ -4,7 +4,7 @@ import secrets
 import shutil
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 from fastmcp import FastMCP
@@ -87,14 +87,52 @@ class TaskFilters:
     include_archived: bool = False
     completed: bool | None = None
     list_id: str | None = None
+    list_name: str | None = None
     tag_id: str | None = None
+    tag_name: str | None = None
     due_from: datetime | None = None
     due_before: datetime | None = None
+    completed_from: datetime | None = None
+    completed_before: datetime | None = None
+    query: str | None = None
     limit: int = 1000
 
 
 def _has_due_date_filter(filters: TaskFilters) -> bool:
     return filters.due_from is not None or filters.due_before is not None
+
+
+def _has_completed_date_filter(filters: TaskFilters) -> bool:
+    return filters.completed_from is not None or filters.completed_before is not None
+
+
+def _local_today() -> date:
+    return datetime.now().astimezone().date()
+
+
+def _local_start_of_day(value: date) -> datetime:
+    return datetime.combine(value, time.min).astimezone()
+
+
+def _today_window() -> tuple[datetime, datetime]:
+    today = _local_today()
+    return _local_start_of_day(today), _local_start_of_day(today + timedelta(days=1))
+
+
+def _calendar_week_window() -> tuple[datetime, datetime]:
+    today = _local_today()
+    week_start = today - timedelta(days=today.weekday())
+    return _local_start_of_day(week_start), _local_start_of_day(week_start + timedelta(days=7))
+
+
+def _date_range_bounds(
+    from_date: date | None,
+    before_date: date | None,
+) -> tuple[datetime | None, datetime | None]:
+    return (
+        _local_start_of_day(from_date) if from_date is not None else None,
+        _local_start_of_day(before_date) if before_date is not None else None,
+    )
 
 
 def _to_2do_timestamp(value: datetime) -> float:
@@ -103,6 +141,10 @@ def _to_2do_timestamp(value: datetime) -> float:
 
 def _tag_filter_token(tag_id: str) -> str:
     return f"{TAG_DELIMITER}{tag_id}{TAG_DELIMITER}"
+
+
+def _query_pattern(value: str) -> str:
+    return f"%{value}%"
 
 
 def _from_2do_timestamp(
@@ -134,12 +176,30 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
     if filters.list_id is not None:
         clauses.append("t.calendaruid = ?")
         params.append(filters.list_id)
+    elif filters.list_name is not None:
+        clauses.append("lower(coalesce(c.title, '')) = lower(?)")
+        params.append(filters.list_name)
 
     if filters.tag_id is not None:
         clauses.append("instr(t.tags, ?) > 0")
         params.append(_tag_filter_token(filters.tag_id))
+    elif filters.tag_name is not None:
+        clauses.append(
+            """
+            exists (
+                select 1
+                from tags tag
+                where tag.isdeleted = 0
+                  and lower(coalesce(tag.tag, '')) = lower(?)
+                  and instr(t.tags, ? || tag.uid || ?) > 0
+            )
+            """
+        )
+        params.extend([filters.tag_name, TAG_DELIMITER, TAG_DELIMITER])
 
     if _has_due_date_filter(filters):
+        clauses.append("t.duedate is not null")
+        clauses.append("t.duedate != 0")
         clauses.append("t.duedate != ?")
         params.append(NULL_DUE_DATE_SENTINEL)
 
@@ -150,6 +210,48 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
     if filters.due_before is not None:
         clauses.append("t.duedate < ?")
         params.append(_to_2do_timestamp(filters.due_before))
+
+    if _has_completed_date_filter(filters):
+        clauses.append("t.completeddate is not null")
+        clauses.append("t.completeddate != 0")
+
+    if filters.completed_from is not None:
+        clauses.append("t.completeddate >= ?")
+        params.append(_to_2do_timestamp(filters.completed_from))
+
+    if filters.completed_before is not None:
+        clauses.append("t.completeddate < ?")
+        params.append(_to_2do_timestamp(filters.completed_before))
+
+    query = filters.query.strip() if filters.query is not None else ""
+    if query:
+        pattern = _query_pattern(query)
+        clauses.append(
+            """
+            (
+                lower(coalesce(t.title, '')) like lower(?)
+                or lower(coalesce(t.notes, '')) like lower(?)
+                or lower(coalesce(c.title, '')) like lower(?)
+                or exists (
+                    select 1
+                    from tags tag
+                    where tag.isdeleted = 0
+                      and lower(coalesce(tag.tag, '')) like lower(?)
+                      and instr(t.tags, ? || tag.uid || ?) > 0
+                )
+            )
+            """
+        )
+        params.extend(
+            [
+                pattern,
+                pattern,
+                pattern,
+                pattern,
+                TAG_DELIMITER,
+                TAG_DELIMITER,
+            ]
+        )
 
     if not clauses:
         return "1 = 1", []
@@ -162,6 +264,41 @@ def _connect() -> sqlite3.Connection:
     connection = sqlite3.connect(f"file:{BACKUPS_DB_PATH}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     return connection
+
+
+def _get_lists() -> list[TaskList]:
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            select
+                uid as list_id
+                , title as list_name
+            from calendars
+            where uid is not null
+              and uid != ''
+            order by lower(coalesce(title, '')), uid
+            """
+        ).fetchall()
+
+    return [TaskList(id=row["list_id"], name=row["list_name"] or "") for row in rows]
+
+
+def _get_tags() -> list[Tag]:
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            select
+                uid as tag_id
+                , tag as tag_name
+            from tags
+            where isdeleted = 0
+              and uid is not null
+              and uid != ''
+            order by lower(coalesce(tag, '')), uid
+            """
+        ).fetchall()
+
+    return [Tag(id=row["tag_id"], name=row["tag_name"] or "") for row in rows]
 
 
 def _get_tags_by_id(connection: sqlite3.Connection) -> dict[str, Tag]:
@@ -248,9 +385,10 @@ def _count_tasks(filters: TaskFilters) -> int:
     with _connect() as connection:
         row = connection.execute(
             f"""
-                select 
+                select
                     count(1) as n
                 from tasks t
+                join calendars c on c.uid = t.calendaruid
                 where {where_clause}
             """,
             params,
@@ -502,26 +640,150 @@ def refresh_backup() -> bool:
 
 
 @mcp.tool()
+def list_lists() -> list[TaskList]:
+    """List 2Do lists."""
+    return _get_lists()
+
+
+@mcp.tool()
+def list_tags() -> list[Tag]:
+    """List non-deleted 2Do tags."""
+    return _get_tags()
+
+
+@mcp.tool()
+def get_tasks(
+    completed: bool | None = None,
+    list_id: str | None = None,
+    list_name: str | None = None,
+    tag_id: str | None = None,
+    tag_name: str | None = None,
+    due_from: date | None = None,
+    due_before: date | None = None,
+    completed_from: date | None = None,
+    completed_before: date | None = None,
+    query: str | None = None,
+    limit: int = 1000,
+) -> list[Task]:
+    """Search and filter 2Do tasks."""
+    due_from_bound, due_before_bound = _date_range_bounds(due_from, due_before)
+    completed_from_bound, completed_before_bound = _date_range_bounds(
+        completed_from,
+        completed_before,
+    )
+
+    return _get_tasks(
+        TaskFilters(
+            completed=completed,
+            list_id=list_id,
+            list_name=list_name,
+            tag_id=tag_id,
+            tag_name=tag_name,
+            due_from=due_from_bound,
+            due_before=due_before_bound,
+            completed_from=completed_from_bound,
+            completed_before=completed_before_bound,
+            query=query,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_overdue_tasks(limit: int = 1000) -> list[Task]:
+    """List open tasks due before today."""
+    return _get_tasks(
+        TaskFilters(
+            completed=False,
+            due_before=_local_start_of_day(_local_today()),
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_inbox_tasks(limit: int = 1000) -> list[Task]:
+    """List open tasks in the Inbox list."""
+    return _get_tasks(TaskFilters(completed=False, list_name="Inbox", limit=limit))
+
+
+@mcp.tool()
+def get_tasks_due_today(limit: int = 1000) -> list[Task]:
+    """List open tasks due today."""
+    due_from, due_before = _today_window()
+    return _get_tasks(
+        TaskFilters(
+            completed=False,
+            due_from=due_from,
+            due_before=due_before,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_tasks_due_this_week(limit: int = 1000) -> list[Task]:
+    """List open tasks due during the current calendar week."""
+    due_from, due_before = _calendar_week_window()
+    return _get_tasks(
+        TaskFilters(
+            completed=False,
+            due_from=due_from,
+            due_before=due_before,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_tasks_completed_today(limit: int = 1000) -> list[Task]:
+    """List tasks completed today."""
+    completed_from, completed_before = _today_window()
+    return _get_tasks(
+        TaskFilters(
+            completed=True,
+            completed_from=completed_from,
+            completed_before=completed_before,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def get_tasks_completed_this_week(limit: int = 1000) -> list[Task]:
+    """List tasks completed during the current calendar week."""
+    completed_from, completed_before = _calendar_week_window()
+    return _get_tasks(
+        TaskFilters(
+            completed=True,
+            completed_from=completed_from,
+            completed_before=completed_before,
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
 def get_completed_tasks() -> list[Task]:
-    """Get the list of completed tasks in 2Do"""
-    return _get_tasks(TaskFilters(completed=True))
+    """List completed, non-deleted, non-archived tasks."""
+    return get_tasks(completed=True)
 
 
 @mcp.tool()
 def count_completed_tasks() -> int:
-    """Count the number of completed tasks in 2Do"""
+    """Count completed, non-deleted, non-archived tasks."""
     return _count_tasks(TaskFilters(completed=True))
 
 
 @mcp.tool()
 def get_open_tasks() -> list[Task]:
-    """Get the list of open tasks in 2Do"""
-    return _get_tasks(TaskFilters(completed=False))
+    """List open, non-deleted, non-archived tasks."""
+    return get_tasks(completed=False)
 
 
 @mcp.tool()
 def count_open_tasks() -> int:
-    """Count the number of open tasks in 2Do"""
+    """Count open, non-deleted, non-archived tasks."""
     return _count_tasks(TaskFilters(completed=False))
 
 

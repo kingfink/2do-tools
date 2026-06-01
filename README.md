@@ -14,9 +14,23 @@ queries from that copy. It does not write to the original 2Do database.
 
 ## Tools
 
-- `get_open_tasks`: list open, non-deleted, non-archived tasks.
+- `list_lists`: list 2Do lists.
+- `list_tags`: list non-deleted 2Do tags.
+- `get_tasks`: search and filter tasks by list, tag, due date range,
+  completion date range, completion state, and query text.
+- `get_overdue_tasks`: list open tasks due before today.
+- `get_inbox_tasks`: list open tasks in the Inbox list.
+- `get_tasks_due_today`: list open tasks due today.
+- `get_tasks_due_this_week`: list open tasks due during the current calendar
+  week.
+- `get_tasks_completed_today`: list tasks completed today.
+- `get_tasks_completed_this_week`: list tasks completed during the current
+  calendar week.
+- `get_open_tasks`: compatibility shortcut for open, non-deleted,
+  non-archived tasks.
 - `count_open_tasks`: count open, non-deleted, non-archived tasks.
-- `get_completed_tasks`: list completed, non-deleted, non-archived tasks.
+- `get_completed_tasks`: compatibility shortcut for completed, non-deleted,
+  non-archived tasks.
 - `count_completed_tasks`: count completed, non-deleted, non-archived tasks.
 - `refresh_backup_db`: find the local 2Do database again, copy it into
   the app support backup directory, validate it, and replace the previous
@@ -148,8 +162,8 @@ Otherwise, refreshes follow this flow:
    `2do.db-wal` and `2do.db-shm`, into a temporary
    `~/Library/Application Support/2do-mcp/backups/.incoming-*` directory.
 2. Validate the copied database with SQLite `PRAGMA integrity_check`.
-3. Confirm the expected `tasks`, `calendars`, and `tags` tables exist.
-4. Confirm every column used by task, calendar, and tag queries exists.
+3. Confirm the expected task, list, and tag storage exists.
+4. Confirm every column used by task, list, and tag queries exists.
 5. Promote exactly one valid staged copy into the app support backup directory.
 
 If no valid database is found, or if multiple valid 2Do databases are found, the
@@ -183,14 +197,33 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
+## Release
+
+Cut releases from a clean `master` checkout after the release changes have
+merged. If the release uses a new version, update the versioned references first
+and merge those changes:
+
+- `pyproject.toml`
+- `mcpb/manifest.json`
+- `mcpb/server.py`
+- README install commands that pin `@vX.Y.Z`
+
+Then publish the GitHub release with the prebuilt MCPB bundle attached:
+
+```bash
+git checkout master
+git pull --ff-only origin master
+git status --short
+gh auth status
+npm install -g @anthropic-ai/mcpb   # if mcpb is not already installed
+scripts/release.sh v0.1.0
+```
+
+The release script validates and packs `dist/2do-mcp.mcpb`, creates or reuses
+the local annotated tag, creates the GitHub release, uploads the bundle asset,
+and pushes the tag to origin after the release succeeds.
+
 ## TODOs
 
-- [ ] Add richer task tools and filters:
-  - [ ] list calendars
-  - [ ] list tags
-  - [ ] get overdue tasks
-  - [ ] get tasks due today
-  - [ ] get upcoming tasks
-  - [ ] search or filter tasks by list, tag, due range, and completion state
 - [ ] Add the ability to add a new task (through the email relay to keep things read only)
 - [ ] Add tests for timestamp sentinel handling, tag parsing, SQL filter construction, schema validation, and backup promotion.
