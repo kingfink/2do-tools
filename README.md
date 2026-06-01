@@ -234,6 +234,7 @@ bundle asset, and creates the remote tag at the current `master` commit.
 
 - [ ] Surface whether tasks are recurring and on what schedule
 - [ ] Incorporate URL schemes functionality as documented [here](https://www.2doapp.com/docs/macos/url-schemes)
+  - Can we replace backup DB / SQLite functionality with these routes?
   - New tools
     - [ ] `add` a task (only, not a project or checklist) with a `task` (title, required), `note` (optional), `forlist` (optional), `type` (always 0, for a regular task), `due` (optional), `repeat` (optional), `tags` (optional). Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#add)
       - [ ] `addnewtask` to open the interface to add a new task instead of actually creating the task or prepopulating info
