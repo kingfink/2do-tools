@@ -197,6 +197,32 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
+## Release
+
+Cut releases from a clean `master` checkout after the release changes have
+merged. If the release uses a new version, update the versioned references first
+and merge those changes:
+
+- `pyproject.toml`
+- `mcpb/manifest.json`
+- `mcpb/server.py`
+- README install commands that pin `@vX.Y.Z`
+
+Then publish the GitHub release with the prebuilt MCPB bundle attached:
+
+```bash
+git checkout master
+git pull --ff-only origin master
+git status --short
+gh auth status
+npm install -g @anthropic-ai/mcpb   # if mcpb is not already installed
+scripts/release.sh v0.1.0
+```
+
+The release script validates and packs `dist/2do-mcp.mcpb`, creates or reuses
+the local annotated tag, creates the GitHub release, uploads the bundle asset,
+and pushes the tag to origin after the release succeeds.
+
 ## TODOs
 
 - [ ] Add the ability to add a new task (through the email relay to keep things read only)
