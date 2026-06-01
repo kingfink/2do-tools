@@ -11,7 +11,7 @@ entry point directly. Both paths require ``uv`` to be installed.
 import os
 import sys
 
-GIT_REF = "git+https://github.com/kingfink/2do-mcp@v0.1.0"
+GIT_REF = "git+https://github.com/kingfink/2do-mcp@v0.2.0"
 COMMAND = ("uvx", "--from", GIT_REF, "2do-mcp", "serve")
 
 
