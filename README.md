@@ -215,7 +215,9 @@ gh pr create --base master --head codex/release-v0.3.0 --title "Bump version to 
 
 `scripts/prepare-release.sh` updates the version references in `pyproject.toml`,
 `mcpb/manifest.json`, `mcpb/server.py`, and this README, runs the standard
-checks, and commits the version bump.
+checks, and commits the version bump. The version update and validation logic
+lives in `scripts/release_metadata.py` so local preparation and CI use the same
+metadata checks.
 
 After the PR merges, publish the release from GitHub Actions:
 

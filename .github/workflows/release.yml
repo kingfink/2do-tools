@@ -37,33 +37,7 @@ jobs:
         run: npm install -g @anthropic-ai/mcpb
 
       - name: Verify release metadata
-        env:
-          TAG: ${{ inputs.tag }}
-        run: |
-          set -euo pipefail
-
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag must look like vX.Y.Z (got: $TAG)" >&2
-            exit 1
-          fi
-
-          version="${TAG#v}"
-          project_version="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-          manifest_version="$(python3 -c 'import json; print(json.load(open("mcpb/manifest.json"))["version"])')"
-
-          if [[ "$project_version" != "$version" ]]; then
-            echo "pyproject.toml version $project_version does not match $version" >&2
-            exit 1
-          fi
-
-          if [[ "$manifest_version" != "$version" ]]; then
-            echo "mcpb/manifest.json version $manifest_version does not match $version" >&2
-            exit 1
-          fi
-
-          grep -q "@$TAG" README.md
-          grep -q "@$TAG" mcpb/manifest.json
-          grep -q "@$TAG" mcpb/server.py
+        run: python3 scripts/release_metadata.py verify "${{ inputs.tag }}"
 
       - name: Compile Python files
         run: git ls-files '*.py' -z | xargs -0 python3 -m py_compile
