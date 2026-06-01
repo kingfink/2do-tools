@@ -192,4 +192,5 @@ uv run ruff format --check .
   - [ ] get tasks due today
   - [ ] get upcoming tasks
   - [ ] search or filter tasks by list, tag, due range, and completion state
+- [ ] Add the ability to add a new task (through the email relay to keep things read only)
 - [ ] Add tests for timestamp sentinel handling, tag parsing, SQL filter construction, schema validation, and backup promotion.
