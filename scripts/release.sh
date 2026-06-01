@@ -5,14 +5,14 @@ set -euo pipefail
 # prebuilt MCPB bundle attached. Run from a clean checkout of the commit you
 # want to release (normally master after the distribution PR has merged).
 #
-# Usage: scripts/release.sh v0.1.0
+# Usage: scripts/release.sh vX.Y.Z
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 tag="${1:-}"
 if [[ -z "$tag" ]]; then
-  echo "Usage: scripts/release.sh <tag>   (e.g. scripts/release.sh v0.1.0)" >&2
+  echo "Usage: scripts/release.sh <tag>   (e.g. scripts/release.sh v0.3.0)" >&2
   exit 1
 fi
 

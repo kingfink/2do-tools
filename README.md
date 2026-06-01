@@ -193,35 +193,42 @@ Run checks:
 
 ```bash
 git ls-files '*.py' -z | xargs -0 python3 -m py_compile
-uv run ruff check .
-uv run ruff format --check .
+uv run --extra dev ruff check .
+uv run --extra dev ruff format --check .
 ```
 
 ## Release
 
-Cut releases from a clean `master` checkout after the release changes have
-merged. If the release uses a new version, update the versioned references first
-and merge those changes:
+Releases use a two-step flow: prepare a normal version-bump PR, then publish
+the GitHub release from CI after that PR merges.
 
-- `pyproject.toml`
-- `mcpb/manifest.json`
-- `mcpb/server.py`
-- README install commands that pin `@vX.Y.Z`
-
-Then publish the GitHub release with the prebuilt MCPB bundle attached:
+Prepare the release PR from a clean checkout:
 
 ```bash
 git checkout master
 git pull --ff-only origin master
-git status --short
-gh auth status
-npm install -g @anthropic-ai/mcpb   # if mcpb is not already installed
-scripts/release.sh v0.2.0
+git checkout -b codex/release-v0.3.0
+scripts/prepare-release.sh v0.3.0
+git push -u origin codex/release-v0.3.0
+gh pr create --base master --head codex/release-v0.3.0 --title "Bump version to v0.3.0"
 ```
 
-The release script validates and packs `dist/2do-mcp.mcpb`, creates or reuses
-the local annotated tag, creates the GitHub release, uploads the bundle asset,
-and pushes the tag to origin after the release succeeds.
+`scripts/prepare-release.sh` updates the version references in `pyproject.toml`,
+`mcpb/manifest.json`, `mcpb/server.py`, and this README, runs the standard
+checks, and commits the version bump. The version update and validation logic
+lives in `scripts/release_metadata.py` so local preparation and CI use the same
+metadata checks.
+
+After the PR merges, publish the release from GitHub Actions:
+
+1. Open Actions > Release > Run workflow.
+2. Enter the same tag, such as `v0.3.0`.
+3. Run the workflow from `master`.
+
+The workflow installs `mcpb`, verifies that the checked-out `master` version
+metadata matches the tag, and runs `scripts/release.sh`. The release script
+validates and packs `dist/2do-mcp.mcpb`, creates the GitHub release, uploads the
+bundle asset, and creates the remote tag at the current `master` commit.
 
 ## TODOs
 
