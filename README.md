@@ -110,7 +110,7 @@ or `--completed` to show only completed tasks. Task filters include `--list`,
 
 ## Agent Skills
 
-Codex and Claude Code plugin installs include three skills:
+Codex and Claude plugin installs include three skills:
 
 - 2Do Daily Review: review overdue, due today, upcoming, inbox, and recently
   completed tasks.
@@ -118,10 +118,13 @@ Codex and Claude Code plugin installs include three skills:
 - 2Do Setup Diagnostics: troubleshoot CLI, MCP, plugin, permission, and database
   discovery issues.
 
-ChatGPT, Claude, and Claude Cowork remote connectors do not install skills from
-this repo; they use the MCP tools and server instructions. The same prompts still
-work, such as "review my 2Do tasks for today", "find 2Do tasks tagged Work with
-a due date", or "diagnose my 2Do setup".
+In Claude, plugin skills are available in Claude chat, Claude Desktop's Chat tab,
+and Claude Cowork after the plugin is installed. Connector-only installs, such as
+ChatGPT custom MCP apps, Claude remote connectors, and Claude Desktop MCPB
+extensions, do not install skills from this repo; they use the MCP tools and
+server instructions. The same prompts still work, such as "review my 2Do tasks
+for today", "find 2Do tasks tagged Work with a due date", or "diagnose my 2Do
+setup".
 
 ## Advanced
 
