@@ -91,14 +91,14 @@ If the server cannot find the 2Do database, make sure 2Do has been opened at lea
 The package also installs a local `2do` command for quick task lookups:
 
 ```bash
-2do tasks
-2do tasks --query invoice --list Projects
-2do tasks --completed --json
-2do lists
-2do tags
+2do task
+2do task --query invoice --list Projects
+2do task --completed --json
+2do list
+2do tag
 ```
 
-`2do tasks` lists open tasks by default. Use `--all` to include completed tasks,
+`2do task` lists open tasks by default. Use `--all` to include completed tasks,
 or `--completed` to show only completed tasks. Task filters include `--list`,
 `--list-id`, `--tag`, `--tag-id`, `--query`, and `--limit`.
 

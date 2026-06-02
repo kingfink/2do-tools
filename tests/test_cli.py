@@ -26,7 +26,7 @@ def _task(*, title: str = "Active task", completed: bool = False) -> server.Task
     )
 
 
-def test_2do_tasks_lists_open_tasks_by_default(
+def test_2do_task_lists_open_tasks_by_default(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -38,13 +38,13 @@ def test_2do_tasks_lists_open_tasks_by_default(
 
     monkeypatch.setattr(cli.server, "_get_tasks", get_tasks)
 
-    assert cli.main(["tasks"]) == 0
+    assert cli.main(["task"]) == 0
 
     assert captured_filters == [server.TaskFilters(completed=False)]
     assert capsys.readouterr().out == "[ ] Active task - Inbox - Work\n"
 
 
-def test_2do_tasks_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_2do_task_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_filters: list[server.TaskFilters] = []
 
     def get_tasks(filters: server.TaskFilters) -> list[server.Task]:
@@ -56,7 +56,7 @@ def test_2do_tasks_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     assert (
         cli.main(
             [
-                "tasks",
+                "task",
                 "--completed",
                 "--list",
                 "Projects",
@@ -82,20 +82,20 @@ def test_2do_tasks_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
 
 
-def test_2do_tasks_prints_json(
+def test_2do_task_prints_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(cli.server, "_get_tasks", lambda filters: [_task()])
 
-    assert cli.main(["tasks", "--json"]) == 0
+    assert cli.main(["task", "--json"]) == 0
 
     output = json.loads(capsys.readouterr().out)
     assert output[0]["title"] == "Active task"
     assert output[0]["list"]["name"] == "Inbox"
 
 
-def test_2do_lists_prints_lists(
+def test_2do_list_prints_lists(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -111,7 +111,7 @@ def test_2do_lists_prints_lists(
         ],
     )
 
-    assert cli.main(["lists"]) == 0
+    assert cli.main(["list"]) == 0
 
     assert capsys.readouterr().out == "Inbox - twodo://x-callback-url/showlist?name=Inbox\n"
 

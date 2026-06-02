@@ -47,23 +47,23 @@ def _main(argv: list[str] | None, *, prog: str) -> int:
     parser = argparse.ArgumentParser(prog=prog)
     subparsers = parser.add_subparsers(dest="command")
 
-    tasks_parser = subparsers.add_parser("tasks", help="List 2Do tasks.")
-    tasks_parser.add_argument("--json", action="store_true", help="Print JSON output.")
-    tasks_state = tasks_parser.add_mutually_exclusive_group()
-    tasks_state.add_argument("--completed", action="store_true", help="List completed tasks.")
-    tasks_state.add_argument("--all", action="store_true", help="List open and completed tasks.")
-    tasks_parser.add_argument("--list", dest="list_name", help="Filter by list name.")
-    tasks_parser.add_argument("--list-id", help="Filter by list ID.")
-    tasks_parser.add_argument("--tag", dest="tag_name", help="Filter by tag name.")
-    tasks_parser.add_argument("--tag-id", help="Filter by tag ID.")
-    tasks_parser.add_argument("--query", help="Search task title, notes, list, and tags.")
-    tasks_parser.add_argument("--limit", type=int, default=1000, help="Maximum tasks to print.")
+    task_parser = subparsers.add_parser("task", help="List 2Do tasks.")
+    task_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    task_state = task_parser.add_mutually_exclusive_group()
+    task_state.add_argument("--completed", action="store_true", help="List completed tasks.")
+    task_state.add_argument("--all", action="store_true", help="List open and completed tasks.")
+    task_parser.add_argument("--list", dest="list_name", help="Filter by list name.")
+    task_parser.add_argument("--list-id", help="Filter by list ID.")
+    task_parser.add_argument("--tag", dest="tag_name", help="Filter by tag name.")
+    task_parser.add_argument("--tag-id", help="Filter by tag ID.")
+    task_parser.add_argument("--query", help="Search task title, notes, list, and tags.")
+    task_parser.add_argument("--limit", type=int, default=1000, help="Maximum tasks to print.")
 
-    lists_parser = subparsers.add_parser("lists", help="List 2Do lists.")
-    lists_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    list_parser = subparsers.add_parser("list", help="List 2Do lists.")
+    list_parser.add_argument("--json", action="store_true", help="Print JSON output.")
 
-    tags_parser = subparsers.add_parser("tags", help="List 2Do tags.")
-    tags_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    tag_parser = subparsers.add_parser("tag", help="List 2Do tags.")
+    tag_parser.add_argument("--json", action="store_true", help="Print JSON output.")
 
     serve_parser = subparsers.add_parser("serve")
     serve_parser.add_argument(
@@ -98,13 +98,13 @@ def _main(argv: list[str] | None, *, prog: str) -> int:
         parser.print_help()
         return 0
 
-    if args.command == "tasks":
+    if args.command == "task":
         return _list_tasks(args)
 
-    if args.command == "lists":
+    if args.command == "list":
         return _list_lists(args)
 
-    if args.command == "tags":
+    if args.command == "tag":
         return _list_tags(args)
 
     if args.command == "serve":
