@@ -1,5 +1,7 @@
 import argparse
+import json
 import sys
+from datetime import date
 from textwrap import dedent
 
 from . import server
@@ -39,10 +41,68 @@ REMOTE_CONNECTOR_ALIASES = {
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="2do-tools")
+    return _main(argv, prog="2do")
+
+
+def _main(argv: list[str] | None, *, prog: str) -> int:
+    parser = argparse.ArgumentParser(prog=prog)
     subparsers = parser.add_subparsers(dest="command")
 
-    serve_parser = subparsers.add_parser("serve")
+    task_parser = subparsers.add_parser("task", help="Work with 2Do tasks.")
+    task_subparsers = task_parser.add_subparsers(dest="task_command")
+    task_list_parser = task_subparsers.add_parser("list", help="List 2Do tasks.")
+    task_list_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    task_state = task_list_parser.add_mutually_exclusive_group()
+    task_state.add_argument("--completed", action="store_true", help="List completed tasks.")
+    task_state.add_argument("--all", action="store_true", help="List open and completed tasks.")
+    task_list_parser.add_argument("--list", dest="list_name", help="Filter by list name.")
+    task_list_parser.add_argument("--list-id", help="Filter by list ID.")
+    task_list_parser.add_argument("--tag", dest="tag_name", help="Filter by tag name.")
+    task_list_parser.add_argument("--tag-id", help="Filter by tag ID.")
+    task_list_parser.add_argument(
+        "--due-from", type=_date_arg, help="Filter to tasks due on or after YYYY-MM-DD."
+    )
+    task_list_parser.add_argument(
+        "--due-before", type=_date_arg, help="Filter to tasks due before YYYY-MM-DD."
+    )
+    task_list_parser.add_argument(
+        "--completed-from",
+        type=_date_arg,
+        help="Filter to tasks completed on or after YYYY-MM-DD.",
+    )
+    task_list_parser.add_argument(
+        "--completed-before",
+        type=_date_arg,
+        help="Filter to tasks completed before YYYY-MM-DD.",
+    )
+    task_list_parser.add_argument(
+        "--has-due-date", action="store_true", help="Filter to tasks with any due date."
+    )
+    task_list_parser.add_argument("--query", help="Search task title, notes, list, and tags.")
+    task_list_parser.add_argument("--limit", type=int, default=1000, help="Maximum tasks to print.")
+    task_open_parser = task_subparsers.add_parser("open", help="Open a 2Do task by UID.")
+    task_open_parser.add_argument("uid")
+
+    list_parser = subparsers.add_parser("list", help="Work with 2Do lists.")
+    list_subparsers = list_parser.add_subparsers(dest="list_command")
+    list_list_parser = list_subparsers.add_parser("list", help="List 2Do lists.")
+    list_list_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    list_open_parser = list_subparsers.add_parser("open", help="Open a 2Do list by name.")
+    list_open_parser.add_argument("name")
+
+    tag_parser = subparsers.add_parser("tag", help="Work with 2Do tags.")
+    tag_subparsers = tag_parser.add_subparsers(dest="tag_command")
+    tag_list_parser = tag_subparsers.add_parser("list", help="List 2Do tags.")
+    tag_list_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+
+    search_parser = subparsers.add_parser("search", help="Work with 2Do searches.")
+    search_subparsers = search_parser.add_subparsers(dest="search_command")
+    search_open_parser = search_subparsers.add_parser("open", help="Open a 2Do search.")
+    search_open_parser.add_argument("query")
+
+    mcp_parser = subparsers.add_parser("mcp", help="Run or configure the MCP server.")
+    mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command")
+    serve_parser = mcp_subparsers.add_parser("serve")
     serve_parser.add_argument(
         "--transport",
         choices=["stdio", "streamable-http", "http", "sse"],
@@ -54,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("refresh")
     subparsers.add_parser("doctor")
 
-    connect_parser = subparsers.add_parser(
+    connect_parser = mcp_subparsers.add_parser(
         "connect",
         help="Print remote connector setup guidance for ChatGPT or Claude Cowork.",
     )
@@ -72,10 +132,52 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command is None:
-        return _serve("stdio")
+        parser.print_help()
+        return 0
 
-    if args.command == "serve":
-        return _serve(args.transport, host=args.host, port=args.port)
+    if args.command == "task":
+        if args.task_command == "list":
+            return _list_tasks(args)
+
+        if args.task_command == "open":
+            return _open_task(args)
+
+        task_parser.print_help()
+        return 0
+
+    if args.command == "list":
+        if args.list_command == "list":
+            return _list_lists(args)
+
+        if args.list_command == "open":
+            return _open_list(args)
+
+        list_parser.print_help()
+        return 0
+
+    if args.command == "tag":
+        if args.tag_command == "list":
+            return _list_tags(args)
+
+        tag_parser.print_help()
+        return 0
+
+    if args.command == "search":
+        if args.search_command == "open":
+            return _open_search(args)
+
+        search_parser.print_help()
+        return 0
+
+    if args.command == "mcp":
+        if args.mcp_command == "serve":
+            return _serve(args.transport, host=args.host, port=args.port)
+
+        if args.mcp_command == "connect":
+            return _connect(args.client, host=args.host, port=args.port, public_url=args.public_url)
+
+        mcp_parser.print_help()
+        return 0
 
     if args.command == "refresh":
         refreshed = server.refresh_backup()
@@ -86,11 +188,114 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return _doctor()
 
-    if args.command == "connect":
-        return _connect(args.client, host=args.host, port=args.port, public_url=args.public_url)
-
     parser.error(f"unknown command: {args.command}")
     return 2
+
+
+def _date_arg(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected YYYY-MM-DD") from exc
+
+
+def _list_tasks(args: argparse.Namespace) -> int:
+    completed = None if args.all else args.completed
+    due_from, due_before = server._date_range_bounds(args.due_from, args.due_before)
+    completed_from, completed_before = server._date_range_bounds(
+        args.completed_from,
+        args.completed_before,
+    )
+
+    tasks = server._get_tasks(
+        server.TaskFilters(
+            completed=completed,
+            list_id=args.list_id,
+            list_name=args.list_name,
+            tag_id=args.tag_id,
+            tag_name=args.tag_name,
+            due_from=due_from,
+            due_before=due_before,
+            has_due_date=args.has_due_date,
+            completed_from=completed_from,
+            completed_before=completed_before,
+            query=args.query,
+            limit=args.limit,
+        )
+    )
+
+    if args.json:
+        _print_json(tasks)
+        return 0
+
+    for task in tasks:
+        print(_format_task(task))
+
+    return 0
+
+
+def _open_task(args: argparse.Namespace) -> int:
+    result = server.open_task(args.uid)
+    print(result.url)
+    return 0
+
+
+def _list_lists(args: argparse.Namespace) -> int:
+    task_lists = server._get_lists()
+
+    if args.json:
+        _print_json(task_lists)
+        return 0
+
+    for task_list in task_lists:
+        print(f"{task_list.name} - {task_list.url}")
+
+    return 0
+
+
+def _open_list(args: argparse.Namespace) -> int:
+    result = server.open_list(args.name)
+    print(result.url)
+    return 0
+
+
+def _list_tags(args: argparse.Namespace) -> int:
+    tags = server._get_tags()
+
+    if args.json:
+        _print_json(tags)
+        return 0
+
+    for tag in tags:
+        print(tag.name)
+
+    return 0
+
+
+def _open_search(args: argparse.Namespace) -> int:
+    result = server.open_search(args.query)
+    print(result.url)
+    return 0
+
+
+def _print_json(items: list[object]) -> None:
+    payload = [
+        item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in items
+    ]
+    print(json.dumps(payload, indent=2))
+
+
+def _format_task(task: server.Task) -> str:
+    status = "[x]" if task.completed else "[ ]"
+    parts = [f"{status} {task.title}", task.list.name]
+
+    if task.date_due is not None:
+        parts.append(f"due {task.date_due.date().isoformat()}")
+
+    if task.tags:
+        parts.append(", ".join(tag.name for tag in task.tags))
+
+    return " - ".join(parts)
 
 
 def _serve(transport: str, *, host: str = "127.0.0.1", port: int = 8765) -> int:
@@ -105,7 +310,7 @@ def _serve(transport: str, *, host: str = "127.0.0.1", port: int = 8765) -> int:
 
 
 def _doctor() -> int:
-    print("2do-tools doctor")
+    print("2do doctor")
     print(f"Backup directory: {backups_db_dir()}")
 
     candidates = server.discover_candidate_dbs()
@@ -146,7 +351,7 @@ def _connect(
 
             Start the local Streamable HTTP server:
 
-              2do-tools serve --transport streamable-http --host {host} --port {port}
+              2do mcp serve --transport streamable-http --host {host} --port {port}
 
             Local endpoint:
 

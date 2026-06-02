@@ -137,6 +137,7 @@ class TaskFilters:
     tag_name: str | None = None
     due_from: datetime | None = None
     due_before: datetime | None = None
+    has_due_date: bool = False
     completed_from: datetime | None = None
     completed_before: datetime | None = None
     query: str | None = None
@@ -149,7 +150,7 @@ class OpenedUrl(BaseModel):
 
 
 def _has_due_date_filter(filters: TaskFilters) -> bool:
-    return filters.due_from is not None or filters.due_before is not None
+    return filters.has_due_date or filters.due_from is not None or filters.due_before is not None
 
 
 def _has_completed_date_filter(filters: TaskFilters) -> bool:
@@ -797,6 +798,7 @@ def list_tasks(
     tag_name: str | None = None,
     due_from: date | None = None,
     due_before: date | None = None,
+    has_due_date: bool = False,
     completed_from: date | None = None,
     completed_before: date | None = None,
     query: str | None = None,
@@ -818,6 +820,7 @@ def list_tasks(
             tag_name=tag_name,
             due_from=due_from_bound,
             due_before=due_before_bound,
+            has_due_date=has_due_date,
             completed_from=completed_from_bound,
             completed_before=completed_before_bound,
             query=query,
