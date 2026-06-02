@@ -108,6 +108,24 @@ or `--completed` to show only completed tasks. Task filters include `--list`,
 `--completed-from`, `--completed-before`, `--has-due-date`, `--query`, and
 `--limit`.
 
+## Agent Skills
+
+Codex and Claude plugin installs include three skills:
+
+- 2Do Daily Review: review overdue, due today, upcoming, inbox, and recently
+  completed tasks.
+- 2Do Task Lookup: find, filter, list, or open tasks, lists, tags, and searches.
+- 2Do Setup Diagnostics: troubleshoot CLI, MCP, plugin, permission, and database
+  discovery issues.
+
+In Claude, plugin skills are available in Claude chat, Claude Desktop's Chat tab,
+and Claude Cowork after the plugin is installed. Connector-only installs, such as
+ChatGPT custom MCP apps, Claude remote connectors, and Claude Desktop MCPB
+extensions, do not install skills from this repo; they use the MCP tools and
+server instructions. The same prompts still work, such as "review my 2Do tasks
+for today", "find 2Do tasks tagged Work with a due date", or "diagnose my 2Do
+setup".
+
 ## Advanced
 
 ### Claude Desktop bundle (MCPB)
@@ -291,4 +309,4 @@ bundle asset, and creates the remote tag at the current `master` commit.
     handling. Documentation
     [here](https://www.2doapp.com/docs/macos/url-schemes/#completing-tasks-by-uid)
 - [ ] Extend this as a more general CLI using the URL schemes
-- [ ] Extend to have skills/plugins/whatever to leverage the CLI
+- [x] Extend to have skills/plugins/whatever to leverage the CLI
