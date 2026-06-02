@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 from textwrap import dedent
 
@@ -39,8 +40,34 @@ REMOTE_CONNECTOR_ALIASES = {
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="2do-tools")
+    return _main(argv, prog="2do-tools", serve_by_default=True)
+
+
+def main_2do(argv: list[str] | None = None) -> int:
+    return _main(argv, prog="2do", serve_by_default=False)
+
+
+def _main(argv: list[str] | None, *, prog: str, serve_by_default: bool) -> int:
+    parser = argparse.ArgumentParser(prog=prog)
     subparsers = parser.add_subparsers(dest="command")
+
+    tasks_parser = subparsers.add_parser("tasks", help="List 2Do tasks.")
+    tasks_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    tasks_state = tasks_parser.add_mutually_exclusive_group()
+    tasks_state.add_argument("--completed", action="store_true", help="List completed tasks.")
+    tasks_state.add_argument("--all", action="store_true", help="List open and completed tasks.")
+    tasks_parser.add_argument("--list", dest="list_name", help="Filter by list name.")
+    tasks_parser.add_argument("--list-id", help="Filter by list ID.")
+    tasks_parser.add_argument("--tag", dest="tag_name", help="Filter by tag name.")
+    tasks_parser.add_argument("--tag-id", help="Filter by tag ID.")
+    tasks_parser.add_argument("--query", help="Search task title, notes, list, and tags.")
+    tasks_parser.add_argument("--limit", type=int, default=1000, help="Maximum tasks to print.")
+
+    lists_parser = subparsers.add_parser("lists", help="List 2Do lists.")
+    lists_parser.add_argument("--json", action="store_true", help="Print JSON output.")
+
+    tags_parser = subparsers.add_parser("tags", help="List 2Do tags.")
+    tags_parser.add_argument("--json", action="store_true", help="Print JSON output.")
 
     serve_parser = subparsers.add_parser("serve")
     serve_parser.add_argument(
@@ -72,7 +99,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command is None:
-        return _serve("stdio")
+        if serve_by_default:
+            return _serve("stdio")
+
+        parser.print_help()
+        return 0
+
+    if args.command == "tasks":
+        return _list_tasks(args)
+
+    if args.command == "lists":
+        return _list_lists(args)
+
+    if args.command == "tags":
+        return _list_tags(args)
 
     if args.command == "serve":
         return _serve(args.transport, host=args.host, port=args.port)
@@ -91,6 +131,76 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.error(f"unknown command: {args.command}")
     return 2
+
+
+def _list_tasks(args: argparse.Namespace) -> int:
+    completed = None if args.all else args.completed
+    tasks = server._get_tasks(
+        server.TaskFilters(
+            completed=completed,
+            list_id=args.list_id,
+            list_name=args.list_name,
+            tag_id=args.tag_id,
+            tag_name=args.tag_name,
+            query=args.query,
+            limit=args.limit,
+        )
+    )
+
+    if args.json:
+        _print_json(tasks)
+        return 0
+
+    for task in tasks:
+        print(_format_task(task))
+
+    return 0
+
+
+def _list_lists(args: argparse.Namespace) -> int:
+    task_lists = server._get_lists()
+
+    if args.json:
+        _print_json(task_lists)
+        return 0
+
+    for task_list in task_lists:
+        print(f"{task_list.name} - {task_list.url}")
+
+    return 0
+
+
+def _list_tags(args: argparse.Namespace) -> int:
+    tags = server._get_tags()
+
+    if args.json:
+        _print_json(tags)
+        return 0
+
+    for tag in tags:
+        print(tag.name)
+
+    return 0
+
+
+def _print_json(items: list[object]) -> None:
+    payload = [
+        item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in items
+    ]
+    print(json.dumps(payload, indent=2))
+
+
+def _format_task(task: server.Task) -> str:
+    status = "[x]" if task.completed else "[ ]"
+    parts = [f"{status} {task.title}", task.list.name]
+
+    if task.date_due is not None:
+        parts.append(f"due {task.date_due.date().isoformat()}")
+
+    if task.tags:
+        parts.append(", ".join(tag.name for tag in task.tags))
+
+    return " - ".join(parts)
 
 
 def _serve(transport: str, *, host: str = "127.0.0.1", port: int = 8765) -> int:

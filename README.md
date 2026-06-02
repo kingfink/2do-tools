@@ -86,6 +86,22 @@ uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do-tools doctor
 
 If the server cannot find the 2Do database, make sure 2Do has been opened at least once and that the client running this server has permission to read `~/Library/Group Containers`.
 
+## CLI
+
+The package also installs a local `2do` command for quick task lookups:
+
+```bash
+2do tasks
+2do tasks --query invoice --list Projects
+2do tasks --completed --json
+2do lists
+2do tags
+```
+
+`2do tasks` lists open tasks by default. Use `--all` to include completed tasks,
+or `--completed` to show only completed tasks. Task filters include `--list`,
+`--list-id`, `--tag`, `--tag-id`, `--query`, and `--limit`.
+
 ## Advanced
 
 ### Claude Desktop bundle (MCPB)

@@ -21,6 +21,7 @@ dev = [
 ]
 
 [project.scripts]
+"2do" = "_2do_tools.cli:main_2do"
 "2do-tools" = "_2do_tools.cli:main"
 
 [tool.hatch.build.targets.wheel]
