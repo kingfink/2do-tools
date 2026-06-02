@@ -222,9 +222,8 @@ Prepare the release PR from GitHub Actions:
 
 The workflow needs permission to create pull requests. Enable Settings > Actions
 > General > Workflow permissions > Allow GitHub Actions to create and approve
-pull requests, or add a `RELEASE_PR_TOKEN` repository secret with permission to
-create pull requests. If a run pushes the release branch but cannot open the PR,
-fix the permission and rerun the workflow with the same tag.
+pull requests. If a run pushes the release branch but cannot open the PR, fix
+the permission and rerun the workflow with the same tag.
 
 To prepare the same PR locally instead, run this from a clean checkout:
 

@@ -204,9 +204,8 @@ After this PR merges, run the Release workflow with tag $tag."
 
 GitHub blocked this workflow token from creating pull requests.
 
-To allow the Prepare Release PR workflow to open the PR, either:
+To allow the Prepare Release PR workflow to open the PR:
 - Enable Settings > Actions > General > Workflow permissions > Allow GitHub Actions to create and approve pull requests.
-- Or create a RELEASE_PR_TOKEN repository secret with permission to create pull requests.
 
 The release branch was pushed successfully: $release_branch
 EOF

@@ -42,5 +42,5 @@ jobs:
 
       - name: Prepare release PR
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: scripts/prepare-release.sh "${{ inputs.tag }}"
