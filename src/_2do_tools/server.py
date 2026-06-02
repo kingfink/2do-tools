@@ -534,24 +534,6 @@ def _get_tasks(filters: TaskFilters) -> list[Task]:
         return [_task_from_row(row, tags_by_id) for row in rows]
 
 
-def _count_tasks(filters: TaskFilters) -> int:
-    where_clause, params = _build_where_clause(filters)
-
-    with _connect() as connection:
-        row = connection.execute(
-            f"""
-                select
-                    count(1) as n
-                from tasks t
-                join calendars c on c.uid = t.calendaruid
-                where {where_clause}
-            """,
-            params,
-        ).fetchone()
-
-    return int(row["n"])
-
-
 def ensure_backup_db_current(*, now: datetime | None = None) -> None:
     global _last_auto_refresh_check_at
 
@@ -807,7 +789,7 @@ def list_tags() -> list[Tag]:
 
 
 @mcp.tool()
-def get_tasks(
+def list_tasks(
     completed: bool | None = None,
     list_id: str | None = None,
     list_name: str | None = None,
@@ -845,7 +827,7 @@ def get_tasks(
 
 
 @mcp.tool()
-def get_overdue_tasks(limit: int = 1000) -> list[Task]:
+def list_overdue_tasks(limit: int = 1000) -> list[Task]:
     """List open tasks due before today."""
     return _get_tasks(
         TaskFilters(
@@ -857,13 +839,13 @@ def get_overdue_tasks(limit: int = 1000) -> list[Task]:
 
 
 @mcp.tool()
-def get_inbox_tasks(limit: int = 1000) -> list[Task]:
+def list_inbox_tasks(limit: int = 1000) -> list[Task]:
     """List open tasks in the Inbox list."""
     return _get_tasks(TaskFilters(completed=False, list_name="Inbox", limit=limit))
 
 
 @mcp.tool()
-def get_tasks_due_today(limit: int = 1000) -> list[Task]:
+def list_tasks_due_today(limit: int = 1000) -> list[Task]:
     """List open tasks due today."""
     due_from, due_before = _today_window()
     return _get_tasks(
@@ -877,7 +859,7 @@ def get_tasks_due_today(limit: int = 1000) -> list[Task]:
 
 
 @mcp.tool()
-def get_tasks_due_this_week(limit: int = 1000) -> list[Task]:
+def list_tasks_due_this_week(limit: int = 1000) -> list[Task]:
     """List open tasks due during the current calendar week."""
     due_from, due_before = _calendar_week_window()
     return _get_tasks(
@@ -891,7 +873,7 @@ def get_tasks_due_this_week(limit: int = 1000) -> list[Task]:
 
 
 @mcp.tool()
-def get_tasks_completed_today(limit: int = 1000) -> list[Task]:
+def list_tasks_completed_today(limit: int = 1000) -> list[Task]:
     """List tasks completed today."""
     completed_from, completed_before = _today_window()
     return _get_tasks(
@@ -905,7 +887,7 @@ def get_tasks_completed_today(limit: int = 1000) -> list[Task]:
 
 
 @mcp.tool()
-def get_tasks_completed_this_week(limit: int = 1000) -> list[Task]:
+def list_tasks_completed_this_week(limit: int = 1000) -> list[Task]:
     """List tasks completed during the current calendar week."""
     completed_from, completed_before = _calendar_week_window()
     return _get_tasks(
@@ -916,30 +898,6 @@ def get_tasks_completed_this_week(limit: int = 1000) -> list[Task]:
             limit=limit,
         )
     )
-
-
-@mcp.tool()
-def get_completed_tasks() -> list[Task]:
-    """List completed, non-deleted, non-archived tasks."""
-    return get_tasks(completed=True)
-
-
-@mcp.tool()
-def count_completed_tasks() -> int:
-    """Count completed, non-deleted, non-archived tasks."""
-    return _count_tasks(TaskFilters(completed=True))
-
-
-@mcp.tool()
-def get_open_tasks() -> list[Task]:
-    """List open, non-deleted, non-archived tasks."""
-    return get_tasks(completed=False)
-
-
-@mcp.tool()
-def count_open_tasks() -> int:
-    """Count open, non-deleted, non-archived tasks."""
-    return _count_tasks(TaskFilters(completed=False))
 
 
 @mcp.tool()

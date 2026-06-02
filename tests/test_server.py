@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -266,6 +267,26 @@ def test_list_lists_includes_showlist_urls(fake_2do_db: Path) -> None:
     ]
 
 
+def test_mcp_tool_surface_uses_final_public_names() -> None:
+    tool_names = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
+
+    assert tool_names == {
+        "list_lists",
+        "list_tags",
+        "list_tasks",
+        "list_overdue_tasks",
+        "list_inbox_tasks",
+        "list_tasks_due_today",
+        "list_tasks_due_this_week",
+        "list_tasks_completed_today",
+        "list_tasks_completed_this_week",
+        "open_task",
+        "open_list",
+        "open_search",
+        "refresh_backup_db",
+    }
+
+
 def test_get_tasks_maps_recurring_task_schedule(fake_2do_db: Path) -> None:
     end_at = datetime(2024, 2, 1, 0, 0, tzinfo=UTC).timestamp()
     with sqlite3.connect(fake_2do_db) as connection:
@@ -328,24 +349,6 @@ def test_get_tasks_applies_filters(
     tasks = server._get_tasks(filters)
 
     assert [task.title for task in tasks] == expected_titles
-
-
-@pytest.mark.parametrize(
-    "filters",
-    [
-        server.TaskFilters(),
-        server.TaskFilters(completed=False),
-        server.TaskFilters(completed=True),
-        server.TaskFilters(list_name="Projects"),
-        server.TaskFilters(tag_name="Home"),
-        server.TaskFilters(query="specialphrase"),
-    ],
-)
-def test_count_tasks_matches_get_tasks_for_same_filters(
-    rich_2do_db: Path,
-    filters: server.TaskFilters,
-) -> None:
-    assert server._count_tasks(filters) == len(server._get_tasks(filters))
 
 
 def test_validate_backup_db_accepts_minimal_required_schema(tmp_path: Path) -> None:

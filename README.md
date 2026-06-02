@@ -16,22 +16,16 @@ queries from that copy. It does not write to the original 2Do database.
 
 - `list_lists`: list 2Do lists.
 - `list_tags`: list non-deleted 2Do tags.
-- `get_tasks`: search and filter tasks by list, tag, due date range,
+- `list_tasks`: search and filter tasks by list, tag, due date range,
   completion date range, completion state, and query text.
-- `get_overdue_tasks`: list open tasks due before today.
-- `get_inbox_tasks`: list open tasks in the Inbox list.
-- `get_tasks_due_today`: list open tasks due today.
-- `get_tasks_due_this_week`: list open tasks due during the current calendar
+- `list_overdue_tasks`: list open tasks due before today.
+- `list_inbox_tasks`: list open tasks in the Inbox list.
+- `list_tasks_due_today`: list open tasks due today.
+- `list_tasks_due_this_week`: list open tasks due during the current calendar
   week.
-- `get_tasks_completed_today`: list tasks completed today.
-- `get_tasks_completed_this_week`: list tasks completed during the current
+- `list_tasks_completed_today`: list tasks completed today.
+- `list_tasks_completed_this_week`: list tasks completed during the current
   calendar week.
-- `get_open_tasks`: compatibility shortcut for open, non-deleted,
-  non-archived tasks.
-- `count_open_tasks`: count open, non-deleted, non-archived tasks.
-- `get_completed_tasks`: compatibility shortcut for completed, non-deleted,
-  non-archived tasks.
-- `count_completed_tasks`: count completed, non-deleted, non-archived tasks.
 - `open_task`: open a 2Do task by UID using 2Do's macOS URL scheme.
 - `open_list`: open a 2Do list by name using 2Do's macOS URL scheme.
 - `open_search`: open a search in 2Do using 2Do's macOS URL scheme.
