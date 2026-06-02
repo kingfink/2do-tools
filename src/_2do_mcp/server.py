@@ -10,6 +10,7 @@ from pathlib import Path
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
+from . import url_schemes
 from .storage import backups_db_dir, backups_db_path
 
 mcp = FastMCP("2Do")
@@ -86,6 +87,7 @@ APP_BUNDLE_PATHS = [
 class TaskList(BaseModel):
     id: str
     name: str
+    url: str
 
 
 class Tag(BaseModel):
@@ -111,6 +113,7 @@ class TaskRecurrence(BaseModel):
 class Task(BaseModel):
     id: int
     uuid: str
+    url: str
     title: str
     notes: str | None = None
     date_created: datetime
@@ -138,6 +141,11 @@ class TaskFilters:
     completed_before: datetime | None = None
     query: str | None = None
     limit: int = 1000
+
+
+class OpenedUrl(BaseModel):
+    url: str
+    opened: bool
 
 
 def _has_due_date_filter(filters: TaskFilters) -> bool:
@@ -403,7 +411,14 @@ def _get_lists() -> list[TaskList]:
             """
         ).fetchall()
 
-    return [TaskList(id=row["list_id"], name=row["list_name"] or "") for row in rows]
+    return [
+        TaskList(
+            id=row["list_id"],
+            name=row["list_name"] or "",
+            url=url_schemes.show_list_url(row["list_name"] or ""),
+        )
+        for row in rows
+    ]
 
 
 def _get_tags() -> list[Tag]:
@@ -457,10 +472,12 @@ def _parse_task_tags(raw_tags: str | None, tags_by_id: dict[str, Tag]) -> list[T
 
 def _task_from_row(row: sqlite3.Row, tags_by_id: dict[str, Tag]) -> Task:
     recurrence = _parse_task_recurrence(row)
+    list_name = row["list_name"] or ""
 
     return Task(
         id=row["id"],
         uuid=row["uuid"],
+        url=url_schemes.show_task_url(row["uuid"]),
         title=row["title"],
         notes=row["notes"] or None,
         date_created=datetime.fromtimestamp(row["date_created"], UTC),
@@ -469,7 +486,11 @@ def _task_from_row(row: sqlite3.Row, tags_by_id: dict[str, Tag]) -> Task:
         completed=bool(row["completed"]),
         recurring=recurrence is not None,
         recurrence=recurrence,
-        list=TaskList(id=row["list_id"], name=row["list_name"] or ""),
+        list=TaskList(
+            id=row["list_id"],
+            name=list_name,
+            url=url_schemes.show_list_url(list_name),
+        ),
         tags=_parse_task_tags(row["tags"], tags_by_id),
     )
 
@@ -919,6 +940,30 @@ def get_open_tasks() -> list[Task]:
 def count_open_tasks() -> int:
     """Count open, non-deleted, non-archived tasks."""
     return _count_tasks(TaskFilters(completed=False))
+
+
+@mcp.tool()
+def open_task(uid: str) -> OpenedUrl:
+    """Open a task in 2Do by UID."""
+    url = url_schemes.show_task_url(uid)
+    url_schemes.open_url(url)
+    return OpenedUrl(url=url, opened=True)
+
+
+@mcp.tool()
+def open_list(name: str) -> OpenedUrl:
+    """Open a 2Do list by name."""
+    url = url_schemes.show_list_url(name)
+    url_schemes.open_url(url)
+    return OpenedUrl(url=url, opened=True)
+
+
+@mcp.tool()
+def open_search(text: str) -> OpenedUrl:
+    """Open a 2Do search."""
+    url = url_schemes.search_url(text)
+    url_schemes.open_url(url)
+    return OpenedUrl(url=url, opened=True)
 
 
 @mcp.tool()

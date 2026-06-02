@@ -83,6 +83,18 @@
       "description": "Count completed, non-deleted, non-archived tasks."
     },
     {
+      "name": "open_task",
+      "description": "Open a 2Do task by UID using 2Do's macOS URL scheme."
+    },
+    {
+      "name": "open_list",
+      "description": "Open a 2Do list by name using 2Do's macOS URL scheme."
+    },
+    {
+      "name": "open_search",
+      "description": "Open a search in 2Do using 2Do's macOS URL scheme."
+    },
+    {
       "name": "refresh_backup_db",
       "description": "Refresh the local read-only backup of the 2Do database."
     }

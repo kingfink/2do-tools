@@ -32,9 +32,16 @@ queries from that copy. It does not write to the original 2Do database.
 - `get_completed_tasks`: compatibility shortcut for completed, non-deleted,
   non-archived tasks.
 - `count_completed_tasks`: count completed, non-deleted, non-archived tasks.
+- `open_task`: open a 2Do task by UID using 2Do's macOS URL scheme.
+- `open_list`: open a 2Do list by name using 2Do's macOS URL scheme.
+- `open_search`: open a search in 2Do using 2Do's macOS URL scheme.
 - `refresh_backup_db`: find the local 2Do database again, copy it into
   the app support backup directory, validate it, and replace the previous
   backup.
+
+Task and list results include a `url` field with the matching `twodo://`
+navigation URL, so clients can render links directly even when they do not call
+the `open_*` tools.
 
 ## Install
 
@@ -175,6 +182,11 @@ The backup is stored locally under
 `~/Library/Application Support/2do-mcp/backups/`. It may contain task titles,
 notes, list names, tags, timestamps, and other 2Do data.
 
+The URL scheme navigation tools launch `twodo://` URLs on the Mac running the
+MCP server. If you expose the server through a remote connector, remote clients
+that can call these tools can also bring 2Do to the front or open task/list/search
+views on that Mac.
+
 ## Development
 
 Clone the repo and create a dev environment with `uv`:
@@ -232,16 +244,27 @@ bundle asset, and creates the remote tag at the current `master` commit.
 
 ## TODOs
 
-- [ ] Incorporate URL schemes functionality as documented [here](https://www.2doapp.com/docs/macos/url-schemes)
-  - Can we replace backup DB / SQLite functionality with these routes?
-  - New tools
-    - [ ] `add` a task (only, not a project or checklist) with a `task` (title, required), `note` (optional), `forlist` (optional), `type` (always 0, for a regular task), `due` (optional), `repeat` (optional), `tags` (optional). Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#add)
-      - [ ] `addnewtask` to open the interface to add a new task instead of actually creating the task or prepopulating info
-      - [ ] apply the param `usequickentry=1` to open the interface to add a new task, prepopulated with the fields from above
-    - [ ] `completetasks` to complete a single task (only one, not bulk). Mark a task as complete (with confirmation). Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#completetasks)
-  - Enrich existing tools
-    - [ ] `showtask` to open a task. For example include a link in what the tools return. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#showtask)
-    - [ ] `showlist` to open a list. For example include a link in what the tools return. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#opening-lists)
-    - [ ] `search` to open a search in 2Do. Optional alternative/complement to our search functionality. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#search)
+- [x] Incorporate URL scheme navigation functionality as documented
+  [here](https://www.2doapp.com/docs/macos/url-schemes/)
+  - [x] Keep backup DB / SQLite functionality as the read/query source. URL
+    schemes are for navigation and user automation, not structured reads.
+  - [x] Add `url_schemes.py` helpers for `showtask`, `showlist`, and `search`.
+  - [x] Enrich task and list results with `twodo://` navigation URLs.
+  - [x] Add `open_task`, `open_list`, and `open_search` navigation tools.
+- [ ] Add safe task creation via URL schemes:
+  - [ ] `addnewtask` to open the interface to add a new task instead of
+    creating the task or prepopulating info. Documentation
+    [here](https://www.2doapp.com/docs/macos/url-schemes/#creating-tasks-with-add)
+  - [ ] `add?usequickentry=1` to open Quick Entry prepopulated with `task`
+    (title, required), `note` (optional), `forlist` (optional), `type=0`,
+    `due` (optional), `repeat` (optional), and `tags` (optional).
+- [ ] Add direct task creation via URL schemes:
+  - [ ] `add` a regular task directly with explicit confirmation/callback
+    handling and the same constrained task fields above.
+  - [ ] Capture the new task UID from `x-success` callback data where possible.
+- [ ] Add single-task completion via URL schemes:
+  - [ ] `completetasks` for exactly one UID, with confirmation/callback
+    handling. Documentation
+    [here](https://www.2doapp.com/docs/macos/url-schemes/#completing-tasks-by-uid)
 - [ ] Extend this as a more general CLI using the URL schemes
 - [ ] Extend to have skills/plugins/whatever to leverage the CLI
