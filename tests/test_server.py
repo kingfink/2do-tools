@@ -250,9 +250,20 @@ def test_get_tasks_maps_active_tasks_from_sqlite_backup(fake_2do_db: Path) -> No
     assert task.completed is False
     assert task.recurring is False
     assert task.recurrence is None
+    assert task.url == "twodo://x-callback-url/showtask?uid=task-active"
     assert task.list.id == "list-inbox"
     assert task.list.name == "Inbox"
+    assert task.list.url == "twodo://x-callback-url/showlist?name=Inbox"
     assert [(tag.id, tag.name) for tag in task.tags] == [("tag-work", "Work")]
+
+
+def test_list_lists_includes_showlist_urls(fake_2do_db: Path) -> None:
+    lists = server._get_lists()
+
+    assert [(task_list.name, task_list.url) for task_list in lists] == [
+        ("Inbox", "twodo://x-callback-url/showlist?name=Inbox"),
+        ("Projects", "twodo://x-callback-url/showlist?name=Projects"),
+    ]
 
 
 def test_get_tasks_maps_recurring_task_schedule(fake_2do_db: Path) -> None:
@@ -391,3 +402,36 @@ def test_refresh_backup_promotes_single_valid_candidate(
         "source_db_path": str(source_db_path),
     }
     assert list(backups_dir.glob(".incoming-*")) == []
+
+
+def test_open_task_opens_showtask_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened_urls: list[str] = []
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
+
+    result = server.open_task("task-active")
+
+    assert opened_urls == ["twodo://x-callback-url/showtask?uid=task-active"]
+    assert result.url == "twodo://x-callback-url/showtask?uid=task-active"
+    assert result.opened is True
+
+
+def test_open_list_opens_showlist_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened_urls: list[str] = []
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
+
+    result = server.open_list("Work & Home")
+
+    assert opened_urls == ["twodo://x-callback-url/showlist?name=Work%20%26%20Home"]
+    assert result.url == "twodo://x-callback-url/showlist?name=Work%20%26%20Home"
+    assert result.opened is True
+
+
+def test_open_search_opens_search_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened_urls: list[str] = []
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
+
+    result = server.open_search("invoice, admin")
+
+    assert opened_urls == ["twodo://x-callback-url/search?text=invoice%2C%20admin"]
+    assert result.url == "twodo://x-callback-url/search?text=invoice%2C%20admin"
+    assert result.opened is True
