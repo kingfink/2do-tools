@@ -56,12 +56,12 @@ Then add the server to your client. Each client has a one-step install:
 | Client | Simplest install |
 | --- | --- |
 | Claude Code | `claude plugin marketplace add kingfink/2do-mcp` then `claude plugin install 2do@2do-mcp` |
-| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-mcp@v0.2.0 2do-mcp serve` |
+| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp serve` |
 | Claude Desktop | Download `2do-mcp.mcpb` from the [latest release](https://github.com/kingfink/2do-mcp/releases/latest) and double-click it |
 
 Every route runs the same thing under the hood — `uv` fetches and caches the server from GitHub on first run. No clone, no virtualenv, no PATH setup.
 
-> These routes require the `v0.2.0` release. Until it is published, install by hand with the config below.
+> These routes require the `v0.3.0` release. Until it is published, install by hand with the config below.
 
 For any other client, or to configure it by hand, use this config:
 
@@ -73,7 +73,7 @@ For any other client, or to configure it by hand, use this config:
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/kingfink/2do-mcp@v0.2.0",
+        "git+https://github.com/kingfink/2do-mcp@v0.3.0",
         "2do-mcp",
         "serve"
       ]
@@ -82,12 +82,12 @@ For any other client, or to configure it by hand, use this config:
 }
 ```
 
-Upgrade later by bumping the `@v0.2.0` tag to a newer release.
+Upgrade later by bumping the `@v0.3.0` tag to a newer release.
 
 Check your setup:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-mcp@v0.2.0 2do-mcp doctor
+uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp doctor
 ```
 
 If the server cannot find the 2Do database, make sure 2Do has been opened at least once and that the client running this server has permission to read `~/Library/Group Containers`.
@@ -125,7 +125,7 @@ Cowork and ChatGPT reach MCP servers from the cloud, so a local stdio server is 
 Run the server with HTTP transport:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-mcp@v0.2.0 2do-mcp \
+uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp \
   serve --transport streamable-http --host 127.0.0.1 --port 8765
 ```
 
@@ -134,8 +134,8 @@ The local endpoint is `http://127.0.0.1:8765/mcp`. Expose it through a trusted H
 For copy-paste setup guidance from the CLI:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-mcp@v0.2.0 2do-mcp connect claude-cowork
-uvx --from git+https://github.com/kingfink/2do-mcp@v0.2.0 2do-mcp connect chatgpt
+uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp connect claude-cowork
+uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp connect chatgpt
 ```
 
 - Claude custom connectors: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp>
