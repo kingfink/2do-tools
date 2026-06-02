@@ -246,4 +246,3 @@ bundle asset, and creates the remote tag at the current `master` commit.
     - [ ] `search` to open a search in 2Do. Optional alternative/complement to our search functionality. Documentation [here](https://www.2doapp.com/docs/macos/url-schemes#search)
 - [ ] Extend this as a more general CLI using the URL schemes
 - [ ] Extend to have skills/plugins/whatever to leverage the CLI
-- [ ] Add tests for timestamp sentinel handling, tag parsing, SQL filter construction, schema validation, and backup promotion
