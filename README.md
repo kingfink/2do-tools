@@ -232,7 +232,6 @@ bundle asset, and creates the remote tag at the current `master` commit.
 
 ## TODOs
 
-- [ ] Surface whether tasks are recurring and on what schedule (via `repeatvalue` column I think, and some notes [here](https://www.2doapp.com/docs/macos/url-schemes#add-dates))
 - [ ] Incorporate URL schemes functionality as documented [here](https://www.2doapp.com/docs/macos/url-schemes)
   - Can we replace backup DB / SQLite functionality with these routes?
   - New tools

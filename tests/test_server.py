@@ -14,9 +14,11 @@ COMPLETED_AT = datetime(2024, 1, 5, 15, 0, tzinfo=UTC).timestamp()
 TASK_INSERT_SQL = """
 insert into tasks (
     primid, uid, title, notes, creationstamp, duedate,
-    completeddate, iscompleted, tags, calendaruid, isdeleted, archived
+    completeddate, iscompleted, tags, calendaruid, isdeleted, archived,
+    recurrence, repeatvalue, repeattype, recurrenceendtype, recurrenceendrepeats,
+    recurrenceenddate
 )
-values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -53,7 +55,13 @@ def _create_query_schema(connection: sqlite3.Connection) -> None:
             tags text,
             calendaruid text,
             isdeleted integer,
-            archived integer
+            archived integer,
+            recurrence integer,
+            repeatvalue integer,
+            repeattype integer,
+            recurrenceendtype integer,
+            recurrenceendrepeats integer,
+            recurrenceenddate real
         );
         """
     )
@@ -74,6 +82,12 @@ def _insert_task(
     calendaruid: str = "list-inbox",
     isdeleted: int = 0,
     archived: int = 0,
+    recurrence: int = 0,
+    repeatvalue: int = 0,
+    repeattype: int = 0,
+    recurrenceendtype: int = 0,
+    recurrenceendrepeats: int = 0,
+    recurrenceenddate: float = 0,
 ) -> None:
     connection.execute(
         TASK_INSERT_SQL,
@@ -90,6 +104,12 @@ def _insert_task(
             calendaruid,
             isdeleted,
             archived,
+            recurrence,
+            repeatvalue,
+            repeattype,
+            recurrenceendtype,
+            recurrenceendrepeats,
+            recurrenceenddate,
         ),
     )
 
@@ -228,9 +248,41 @@ def test_get_tasks_maps_active_tasks_from_sqlite_backup(fake_2do_db: Path) -> No
     assert task.date_due is None
     assert task.date_completed is None
     assert task.completed is False
+    assert task.recurring is False
+    assert task.recurrence is None
     assert task.list.id == "list-inbox"
     assert task.list.name == "Inbox"
     assert [(tag.id, tag.name) for tag in task.tags] == [("tag-work", "Work")]
+
+
+def test_get_tasks_maps_recurring_task_schedule(fake_2do_db: Path) -> None:
+    end_at = datetime(2024, 2, 1, 0, 0, tzinfo=UTC).timestamp()
+    with sqlite3.connect(fake_2do_db) as connection:
+        _insert_task(
+            connection,
+            primid=4,
+            uid="task-recurring",
+            title="Recurring task",
+            recurrence=2,
+            repeatvalue=3,
+            repeattype=258,
+            recurrenceendtype=1,
+            recurrenceenddate=end_at,
+        )
+
+    tasks = server._get_tasks(server.TaskFilters(query="Recurring task"))
+
+    task = tasks[0]
+    assert task.recurring is True
+    assert task.recurrence is not None
+    assert task.recurrence.schedule == "every 3 months"
+    assert task.recurrence.repeat_from == "completion_date"
+    assert task.recurrence.end is not None
+    assert task.recurrence.end.kind == "on_date"
+    assert task.recurrence.end.date == datetime.fromtimestamp(end_at, UTC)
+    assert task.recurrence.raw_recurrence == 2
+    assert task.recurrence.raw_repeatvalue == 3
+    assert task.recurrence.raw_repeattype == 258
 
 
 def test_due_date_filters_exclude_null_due_date_sentinel(fake_2do_db: Path) -> None:

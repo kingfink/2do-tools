@@ -19,6 +19,25 @@ NULL_DUE_DATE_SENTINEL = 6406192800.0
 
 TAG_DELIMITER = "_~|$$@$$|~_"
 
+REPEAT_TYPE_UNITS = {
+    256: ("day", "days"),
+    257: ("week", "weeks"),
+    258: ("month", "months"),
+    259: ("year", "years"),
+}
+
+REPEAT_VALUE_PRESET_SCHEDULES = {
+    1: "every day",
+    2: "every week",
+    3: "every 2 weeks",
+    4: "every month",
+}
+
+RECURRENCE_REPEAT_FROM = {
+    1: "due_date",
+    2: "completion_date",
+}
+
 REQUIRED_BACKUP_COLUMNS = {
     "tasks": [
         "archived",
@@ -30,6 +49,12 @@ REQUIRED_BACKUP_COLUMNS = {
         "isdeleted",
         "notes",
         "primid",
+        "recurrence",
+        "recurrenceenddate",
+        "recurrenceendrepeats",
+        "recurrenceendtype",
+        "repeattype",
+        "repeatvalue",
         "tags",
         "title",
         "uid",
@@ -68,6 +93,21 @@ class Tag(BaseModel):
     name: str
 
 
+class TaskRecurrenceEnd(BaseModel):
+    kind: str
+    count: int | None = None
+    date: datetime | None = None
+
+
+class TaskRecurrence(BaseModel):
+    schedule: str
+    repeat_from: str | None = None
+    end: TaskRecurrenceEnd | None = None
+    raw_recurrence: int
+    raw_repeatvalue: int
+    raw_repeattype: int
+
+
 class Task(BaseModel):
     id: int
     uuid: str
@@ -77,6 +117,8 @@ class Task(BaseModel):
     date_due: datetime | None = None
     date_completed: datetime | None = None
     completed: bool
+    recurring: bool = False
+    recurrence: TaskRecurrence | None = None
     list: TaskList
     tags: list[Tag] = Field(default_factory=list)
 
@@ -157,6 +199,87 @@ def _from_2do_timestamp(
         return None
 
     return datetime.fromtimestamp(value, UTC)
+
+
+def _int_or_zero(value: object) -> int:
+    if value is None:
+        return 0
+
+    return int(value)
+
+
+def _format_interval_schedule(repeat_type: int, repeat_value: int) -> str | None:
+    units = REPEAT_TYPE_UNITS.get(repeat_type)
+    if units is None:
+        return None
+
+    interval = repeat_value if repeat_value > 0 else 1
+    unit = units[0] if interval == 1 else units[1]
+
+    if interval == 1:
+        return f"every {unit}"
+
+    return f"every {interval} {unit}"
+
+
+def _format_repeat_schedule(repeat_type: int, repeat_value: int) -> str:
+    interval_schedule = _format_interval_schedule(repeat_type, repeat_value)
+    if interval_schedule is not None:
+        return interval_schedule
+
+    if repeat_type == 0 and repeat_value in REPEAT_VALUE_PRESET_SCHEDULES:
+        return REPEAT_VALUE_PRESET_SCHEDULES[repeat_value]
+
+    if 0 < repeat_type < 256:
+        return f"weekly on selected weekdays (raw mask {repeat_type})"
+
+    return f"custom repeat pattern (repeat type {repeat_type}, repeat value {repeat_value})"
+
+
+def _parse_task_recurrence_end(
+    recurrence_end_type: int,
+    recurrence_end_repeats: int,
+    recurrence_end_date: float | int | None,
+) -> TaskRecurrenceEnd | None:
+    if recurrence_end_type == 0:
+        return None
+
+    end_date = _from_2do_timestamp(recurrence_end_date)
+
+    if recurrence_end_repeats > 0:
+        return TaskRecurrenceEnd(
+            kind="after_occurrences",
+            count=recurrence_end_repeats,
+            date=end_date,
+        )
+
+    if end_date is not None:
+        return TaskRecurrenceEnd(kind="on_date", date=end_date)
+
+    return TaskRecurrenceEnd(kind=f"unknown:{recurrence_end_type}")
+
+
+def _parse_task_recurrence(row: sqlite3.Row) -> TaskRecurrence | None:
+    repeat_type = _int_or_zero(row["repeattype"])
+    repeat_value = _int_or_zero(row["repeatvalue"])
+
+    if repeat_type == 0 and repeat_value == 0:
+        return None
+
+    raw_recurrence = _int_or_zero(row["recurrence"])
+
+    return TaskRecurrence(
+        schedule=_format_repeat_schedule(repeat_type, repeat_value),
+        repeat_from=RECURRENCE_REPEAT_FROM.get(raw_recurrence),
+        end=_parse_task_recurrence_end(
+            _int_or_zero(row["recurrenceendtype"]),
+            _int_or_zero(row["recurrenceendrepeats"]),
+            row["recurrenceenddate"],
+        ),
+        raw_recurrence=raw_recurrence,
+        raw_repeatvalue=repeat_value,
+        raw_repeattype=repeat_type,
+    )
 
 
 def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
@@ -332,6 +455,25 @@ def _parse_task_tags(raw_tags: str | None, tags_by_id: dict[str, Tag]) -> list[T
     return tags
 
 
+def _task_from_row(row: sqlite3.Row, tags_by_id: dict[str, Tag]) -> Task:
+    recurrence = _parse_task_recurrence(row)
+
+    return Task(
+        id=row["id"],
+        uuid=row["uuid"],
+        title=row["title"],
+        notes=row["notes"] or None,
+        date_created=datetime.fromtimestamp(row["date_created"], UTC),
+        date_due=_from_2do_timestamp(row["date_due"], null_due_date=True),
+        date_completed=_from_2do_timestamp(row["date_completed"]),
+        completed=bool(row["completed"]),
+        recurring=recurrence is not None,
+        recurrence=recurrence,
+        list=TaskList(id=row["list_id"], name=row["list_name"] or ""),
+        tags=_parse_task_tags(row["tags"], tags_by_id),
+    )
+
+
 def _get_tasks(filters: TaskFilters) -> list[Task]:
     where_clause, params = _build_where_clause(filters)
     limit = max(1, filters.limit)
@@ -350,6 +492,12 @@ def _get_tasks(filters: TaskFilters) -> list[Task]:
                     , t.duedate as date_due
                     , t.completeddate as date_completed
                     , t.iscompleted as completed
+                    , t.recurrence
+                    , t.repeatvalue
+                    , t.repeattype
+                    , t.recurrenceendtype
+                    , t.recurrenceendrepeats
+                    , t.recurrenceenddate
                     , t.tags
                     , c.uid as list_id
                     , c.title as list_name
@@ -362,21 +510,7 @@ def _get_tasks(filters: TaskFilters) -> list[Task]:
             params + [limit],
         ).fetchall()
 
-        return [
-            Task(
-                id=row["id"],
-                uuid=row["uuid"],
-                title=row["title"],
-                notes=row["notes"] or None,
-                date_created=datetime.fromtimestamp(row["date_created"], UTC),
-                date_due=_from_2do_timestamp(row["date_due"], null_due_date=True),
-                date_completed=_from_2do_timestamp(row["date_completed"]),
-                completed=bool(row["completed"]),
-                list=TaskList(id=row["list_id"], name=row["list_name"] or ""),
-                tags=_parse_task_tags(row["tags"], tags_by_id),
-            )
-            for row in rows
-        ]
+        return [_task_from_row(row, tags_by_id) for row in rows]
 
 
 def _count_tasks(filters: TaskFilters) -> int:
