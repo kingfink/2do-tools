@@ -7,6 +7,7 @@ import pytest
 import _2do_mcp.server as server
 
 CREATED_AT = datetime(2024, 1, 2, 12, 0, tzinfo=UTC).timestamp()
+DUE_AT = datetime(2024, 1, 4, 9, 0, tzinfo=UTC).timestamp()
 
 
 def _raw_tags(*tag_ids: str) -> str:
@@ -152,3 +153,34 @@ def test_get_tasks_maps_active_tasks_from_sqlite_backup(fake_2do_db: Path) -> No
     assert task.list.id == "list-inbox"
     assert task.list.name == "Inbox"
     assert [(tag.id, tag.name) for tag in task.tags] == [("tag-work", "Work")]
+
+
+def test_due_date_filters_exclude_null_due_date_sentinel(fake_2do_db: Path) -> None:
+    with sqlite3.connect(fake_2do_db) as connection:
+        connection.execute(
+            """
+            insert into tasks (
+                primid, uid, title, notes, creationstamp, duedate,
+                completeddate, iscompleted, tags, calendaruid, isdeleted, archived
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                4,
+                "task-dated",
+                "Dated task",
+                None,
+                CREATED_AT,
+                DUE_AT,
+                0,
+                0,
+                None,
+                "list-inbox",
+                0,
+                0,
+            ),
+        )
+
+    tasks = server._get_tasks(server.TaskFilters(due_from=datetime(2024, 1, 1, tzinfo=UTC)))
+
+    assert [task.title for task in tasks] == ["Dated task"]
