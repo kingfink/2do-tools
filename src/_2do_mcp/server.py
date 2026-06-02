@@ -10,8 +10,8 @@ from pathlib import Path
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
-from . import url_schemes
 from .storage import backups_db_dir, backups_db_path
+from .url_schemes import open_url, search_url, show_list_url, show_task_url
 
 mcp = FastMCP("2Do")
 
@@ -415,7 +415,7 @@ def _get_lists() -> list[TaskList]:
         TaskList(
             id=row["list_id"],
             name=row["list_name"] or "",
-            url=url_schemes.show_list_url(row["list_name"] or ""),
+            url=show_list_url(row["list_name"] or ""),
         )
         for row in rows
     ]
@@ -477,7 +477,7 @@ def _task_from_row(row: sqlite3.Row, tags_by_id: dict[str, Tag]) -> Task:
     return Task(
         id=row["id"],
         uuid=row["uuid"],
-        url=url_schemes.show_task_url(row["uuid"]),
+        url=show_task_url(row["uuid"]),
         title=row["title"],
         notes=row["notes"] or None,
         date_created=datetime.fromtimestamp(row["date_created"], UTC),
@@ -489,7 +489,7 @@ def _task_from_row(row: sqlite3.Row, tags_by_id: dict[str, Tag]) -> Task:
         list=TaskList(
             id=row["list_id"],
             name=list_name,
-            url=url_schemes.show_list_url(list_name),
+            url=show_list_url(list_name),
         ),
         tags=_parse_task_tags(row["tags"], tags_by_id),
     )
@@ -945,24 +945,24 @@ def count_open_tasks() -> int:
 @mcp.tool()
 def open_task(uid: str) -> OpenedUrl:
     """Open a task in 2Do by UID."""
-    url = url_schemes.show_task_url(uid)
-    url_schemes.open_url(url)
+    url = show_task_url(uid)
+    open_url(url)
     return OpenedUrl(url=url, opened=True)
 
 
 @mcp.tool()
 def open_list(name: str) -> OpenedUrl:
     """Open a 2Do list by name."""
-    url = url_schemes.show_list_url(name)
-    url_schemes.open_url(url)
+    url = show_list_url(name)
+    open_url(url)
     return OpenedUrl(url=url, opened=True)
 
 
 @mcp.tool()
 def open_search(text: str) -> OpenedUrl:
     """Open a 2Do search."""
-    url = url_schemes.search_url(text)
-    url_schemes.open_url(url)
+    url = search_url(text)
+    open_url(url)
     return OpenedUrl(url=url, opened=True)
 
 

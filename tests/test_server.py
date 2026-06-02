@@ -406,7 +406,7 @@ def test_refresh_backup_promotes_single_valid_candidate(
 
 def test_open_task_opens_showtask_url(monkeypatch: pytest.MonkeyPatch) -> None:
     opened_urls: list[str] = []
-    monkeypatch.setattr(server.url_schemes, "open_url", opened_urls.append)
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
 
     result = server.open_task("task-active")
 
@@ -417,7 +417,7 @@ def test_open_task_opens_showtask_url(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_open_list_opens_showlist_url(monkeypatch: pytest.MonkeyPatch) -> None:
     opened_urls: list[str] = []
-    monkeypatch.setattr(server.url_schemes, "open_url", opened_urls.append)
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
 
     result = server.open_list("Work & Home")
 
@@ -428,7 +428,7 @@ def test_open_list_opens_showlist_url(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_open_search_opens_search_url(monkeypatch: pytest.MonkeyPatch) -> None:
     opened_urls: list[str] = []
-    monkeypatch.setattr(server.url_schemes, "open_url", opened_urls.append)
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
 
     result = server.open_search("invoice, admin")
 
