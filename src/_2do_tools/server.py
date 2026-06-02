@@ -13,7 +13,15 @@ from pydantic import BaseModel, Field
 from .storage import backups_db_dir, backups_db_path
 from .url_schemes import open_url, search_url, show_list_url, show_task_url
 
-mcp = FastMCP("2Do")
+MCP_INSTRUCTIONS = (
+    "2Do Tools is read-only access to the local 2Do macOS task database. "
+    "Use list_tasks for filtered lookup and the list_tasks_* shortcuts for common date groups. "
+    "Use exact local dates for relative date requests. Task and list results include twodo:// "
+    "URLs. open_task/open_list/open_search only open views on the Mac running the server; use "
+    "them when the user asks to open something. Run refresh_backup_db if results look stale."
+)
+
+mcp = FastMCP("2Do", instructions=MCP_INSTRUCTIONS)
 
 # this is the sentinel value used to represent a null due date in 2Do
 NULL_DUE_DATE_SENTINEL = 6406192800.0
