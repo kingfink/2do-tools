@@ -43,11 +43,11 @@
       "description": "Search and filter 2Do tasks."
     },
     {
-      "name": "list_overdue_tasks",
+      "name": "list_tasks_overdue",
       "description": "List open tasks due before today."
     },
     {
-      "name": "list_inbox_tasks",
+      "name": "list_tasks_inbox",
       "description": "List open tasks in the Inbox list."
     },
     {

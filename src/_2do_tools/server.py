@@ -827,7 +827,7 @@ def list_tasks(
 
 
 @mcp.tool()
-def list_overdue_tasks(limit: int = 1000) -> list[Task]:
+def list_tasks_overdue(limit: int = 1000) -> list[Task]:
     """List open tasks due before today."""
     return _get_tasks(
         TaskFilters(
@@ -839,7 +839,7 @@ def list_overdue_tasks(limit: int = 1000) -> list[Task]:
 
 
 @mcp.tool()
-def list_inbox_tasks(limit: int = 1000) -> list[Task]:
+def list_tasks_inbox(limit: int = 1000) -> list[Task]:
     """List open tasks in the Inbox list."""
     return _get_tasks(TaskFilters(completed=False, list_name="Inbox", limit=limit))
 

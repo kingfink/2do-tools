@@ -18,8 +18,8 @@ queries from that copy. It does not write to the original 2Do database.
 - `list_tags`: list non-deleted 2Do tags.
 - `list_tasks`: search and filter tasks by list, tag, due date range,
   completion date range, completion state, and query text.
-- `list_overdue_tasks`: list open tasks due before today.
-- `list_inbox_tasks`: list open tasks in the Inbox list.
+- `list_tasks_overdue`: list open tasks due before today.
+- `list_tasks_inbox`: list open tasks in the Inbox list.
 - `list_tasks_due_today`: list open tasks due today.
 - `list_tasks_due_this_week`: list open tasks due during the current calendar
   week.
