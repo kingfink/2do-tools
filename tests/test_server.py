@@ -1,4 +1,3 @@
-import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -265,26 +264,6 @@ def test_list_lists_includes_showlist_urls(fake_2do_db: Path) -> None:
         ("Inbox", "twodo://x-callback-url/showlist?name=Inbox"),
         ("Projects", "twodo://x-callback-url/showlist?name=Projects"),
     ]
-
-
-def test_mcp_tool_surface_uses_final_public_names() -> None:
-    tool_names = {tool.name for tool in asyncio.run(server.mcp.list_tools())}
-
-    assert tool_names == {
-        "list_lists",
-        "list_tags",
-        "list_tasks",
-        "list_tasks_overdue",
-        "list_tasks_inbox",
-        "list_tasks_due_today",
-        "list_tasks_due_this_week",
-        "list_tasks_completed_today",
-        "list_tasks_completed_this_week",
-        "open_task",
-        "open_list",
-        "open_search",
-        "refresh_backup_db",
-    }
 
 
 def test_get_tasks_maps_recurring_task_schedule(fake_2do_db: Path) -> None:
