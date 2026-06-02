@@ -330,24 +330,6 @@ def test_get_tasks_applies_filters(
     assert [task.title for task in tasks] == expected_titles
 
 
-@pytest.mark.parametrize(
-    "filters",
-    [
-        server.TaskFilters(),
-        server.TaskFilters(completed=False),
-        server.TaskFilters(completed=True),
-        server.TaskFilters(list_name="Projects"),
-        server.TaskFilters(tag_name="Home"),
-        server.TaskFilters(query="specialphrase"),
-    ],
-)
-def test_count_tasks_matches_get_tasks_for_same_filters(
-    rich_2do_db: Path,
-    filters: server.TaskFilters,
-) -> None:
-    assert server._count_tasks(filters) == len(server._get_tasks(filters))
-
-
 def test_validate_backup_db_accepts_minimal_required_schema(tmp_path: Path) -> None:
     staging_dir = tmp_path / "valid"
     _create_required_schema_backup(staging_dir)

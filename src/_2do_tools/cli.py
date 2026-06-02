@@ -15,7 +15,7 @@ REMOTE_CONNECTOR_DOCS = {
         "next_steps": [
             "Expose the local endpoint through a trusted HTTPS tunnel or hosted deployment.",
             "In ChatGPT developer mode, create a custom MCP app using the HTTPS URL.",
-            "Scan the app's tools, then test with a prompt like: Count my open 2Do tasks.",
+            "Scan the app's tools, then test with a prompt like: List my open 2Do tasks.",
         ],
     },
     "claude-cowork": {
@@ -28,7 +28,7 @@ REMOTE_CONNECTOR_DOCS = {
         "next_steps": [
             "Expose the local endpoint through a trusted HTTPS tunnel or hosted deployment.",
             "In Claude, add a custom connector using the HTTPS URL.",
-            "Test the connector with a prompt like: Count my open 2Do tasks.",
+            "Test the connector with a prompt like: List my open 2Do tasks.",
         ],
     },
 }
