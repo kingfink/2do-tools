@@ -34,7 +34,9 @@ def _create_query_schema(connection: sqlite3.Connection) -> None:
         """
         create table calendars (
             uid text,
-            title text
+            title text,
+            isdeleted integer,
+            isarchived integer
         );
 
         create table tags (
@@ -141,10 +143,12 @@ def fake_2do_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         _create_query_schema(connection)
 
         connection.executemany(
-            "insert into calendars (uid, title) values (?, ?)",
+            "insert into calendars (uid, title, isdeleted, isarchived) values (?, ?, ?, ?)",
             [
-                ("list-inbox", "Inbox"),
-                ("list-projects", "Projects"),
+                ("list-inbox", "Inbox", 0, 0),
+                ("list-projects", "Projects", 0, 0),
+                ("list-archived", "Archived", 0, 1),
+                ("list-deleted", "Deleted", 1, 0),
             ],
         )
         connection.executemany(
@@ -357,6 +361,8 @@ def test_validate_backup_db_accepts_minimal_required_schema(tmp_path: Path) -> N
     [
         ("tasks", None),
         (None, ("tasks", "uid")),
+        (None, ("calendars", "isdeleted")),
+        (None, ("calendars", "isarchived")),
     ],
 )
 def test_validate_backup_db_rejects_missing_required_schema(
@@ -415,6 +421,35 @@ def test_open_task_opens_showtask_url(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_open_list_opens_showlist_url(monkeypatch: pytest.MonkeyPatch) -> None:
     opened_urls: list[str] = []
     monkeypatch.setattr(server, "open_url", opened_urls.append)
+    monkeypatch.setattr(server, "_get_lists", lambda: [])
+
+    result = server.open_list("Work & Home")
+
+    assert opened_urls == ["twodo://x-callback-url/showlist?name=Work%20%26%20Home"]
+    assert result.url == "twodo://x-callback-url/showlist?name=Work%20%26%20Home"
+    assert result.opened is True
+
+
+def test_open_list_matches_list_name_case_insensitively(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened_urls: list[str] = []
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
+
+    result = server.open_list("inbox")
+
+    assert opened_urls == ["twodo://x-callback-url/showlist?name=Inbox"]
+    assert result.url == "twodo://x-callback-url/showlist?name=Inbox"
+    assert result.opened is True
+
+
+def test_open_list_falls_back_to_requested_name_when_lists_are_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened_urls: list[str] = []
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
+    monkeypatch.setattr(server, "_get_lists", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
 
     result = server.open_list("Work & Home")
 

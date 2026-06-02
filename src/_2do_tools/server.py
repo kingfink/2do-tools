@@ -68,7 +68,7 @@ REQUIRED_BACKUP_COLUMNS = {
         "title",
         "uid",
     ],
-    "calendars": ["title", "uid"],
+    "calendars": ["isarchived", "isdeleted", "title", "uid"],
     "tags": ["isdeleted", "tag", "uid"],
 }
 
@@ -416,6 +416,8 @@ def _get_lists() -> list[TaskList]:
             from calendars
             where uid is not null
               and uid != ''
+              and coalesce(isdeleted, 0) = 0
+              and coalesce(isarchived, 0) = 0
             order by lower(coalesce(title, '')), uid
             """
         ).fetchall()
@@ -428,6 +430,21 @@ def _get_lists() -> list[TaskList]:
         )
         for row in rows
     ]
+
+
+def _resolve_list_name(name: str) -> str:
+    requested_name = name.casefold()
+
+    try:
+        task_lists = _get_lists()
+    except (OSError, RuntimeError, sqlite3.Error):
+        return name
+
+    for task_list in task_lists:
+        if task_list.name.casefold() == requested_name:
+            return task_list.name
+
+    return name
 
 
 def _get_tags() -> list[Tag]:
@@ -922,7 +939,7 @@ def open_task(uid: str) -> OpenedUrl:
 @mcp.tool()
 def open_list(name: str) -> OpenedUrl:
     """Open a 2Do list by name."""
-    url = show_list_url(name)
+    url = show_list_url(_resolve_list_name(name))
     open_url(url)
     return OpenedUrl(url=url, opened=True)
 

@@ -228,8 +228,7 @@ def _list_tasks(args: argparse.Namespace) -> int:
         _print_json(tasks)
         return 0
 
-    for task in tasks:
-        print(_format_task(task))
+    _print_task_table(tasks)
 
     return 0
 
@@ -285,17 +284,40 @@ def _print_json(items: list[object]) -> None:
     print(json.dumps(payload, indent=2))
 
 
-def _format_task(task: server.Task) -> str:
-    status = "[x]" if task.completed else "[ ]"
-    parts = [f"{status} {task.title}", task.list.name]
+def _print_task_table(tasks: list[server.Task]) -> None:
+    if not tasks:
+        return
 
-    if task.date_due is not None:
-        parts.append(f"due {task.date_due.date().isoformat()}")
+    rows = [_task_table_row(task) for task in tasks]
+    for line in _format_table(["Status", "List", "Task", "Due"], rows):
+        print(line)
 
-    if task.tags:
-        parts.append(", ".join(tag.name for tag in task.tags))
 
-    return " - ".join(parts)
+def _task_table_row(task: server.Task) -> list[str]:
+    return [
+        "[x]" if task.completed else "[ ]",
+        task.list.name,
+        task.title,
+        task.date_due.date().isoformat() if task.date_due is not None else "",
+    ]
+
+
+def _format_table(headers: list[str], rows: list[list[str]]) -> list[str]:
+    widths = [
+        max(len(row[column_index]) for row in [headers, *rows])
+        for column_index in range(len(headers))
+    ]
+
+    return [
+        _format_table_row(headers, widths),
+        _format_table_row(["-" * width for width in widths], widths),
+        *[_format_table_row(row, widths) for row in rows],
+    ]
+
+
+def _format_table_row(row: list[str], widths: list[int]) -> str:
+    padded_cells = [cell.ljust(width) for cell, width in zip(row, widths, strict=True)]
+    return "  ".join(padded_cells).rstrip()
 
 
 def _serve(transport: str, *, host: str = "127.0.0.1", port: int = 8765) -> int:
