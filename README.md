@@ -50,7 +50,7 @@ Then add the server to your client. Each client has a one-step install:
 | Client | Simplest install |
 | --- | --- |
 | Claude Code | `claude plugin marketplace add kingfink/2do-tools` then `claude plugin install 2do@2do-tools` |
-| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do serve` |
+| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do mcp serve` |
 | Claude Desktop | Download `2do-tools.mcpb` from the [latest release](https://github.com/kingfink/2do-tools/releases/latest) and double-click it |
 
 Every route runs the same thing under the hood — `uv` fetches and caches the server from GitHub on first run. No clone, no virtualenv, no PATH setup.
@@ -69,6 +69,7 @@ For any other client, or to configure it by hand, use this config:
         "--from",
         "git+https://github.com/kingfink/2do-tools@v0.3.0",
         "2do",
+        "mcp",
         "serve"
       ]
     }
@@ -91,16 +92,21 @@ If the server cannot find the 2Do database, make sure 2Do has been opened at lea
 The package also installs a local `2do` command for quick task lookups:
 
 ```bash
-2do task
-2do task --query invoice --list Projects
-2do task --completed --json
-2do list
-2do tag
+2do task list
+2do task list --query invoice --list Projects
+2do task list --has-due-date --json
+2do task open task-uid
+2do list list
+2do list open Inbox
+2do tag list
+2do search open invoice
 ```
 
-`2do task` lists open tasks by default. Use `--all` to include completed tasks,
+`2do task list` lists open tasks by default. Use `--all` to include completed tasks,
 or `--completed` to show only completed tasks. Task filters include `--list`,
-`--list-id`, `--tag`, `--tag-id`, `--query`, and `--limit`.
+`--list-id`, `--tag`, `--tag-id`, `--due-from`, `--due-before`,
+`--completed-from`, `--completed-before`, `--has-due-date`, `--query`, and
+`--limit`.
 
 ## Advanced
 
@@ -136,7 +142,7 @@ Run the server with HTTP transport:
 
 ```bash
 uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do \
-  serve --transport streamable-http --host 127.0.0.1 --port 8765
+  mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
 ```
 
 The local endpoint is `http://127.0.0.1:8765/mcp`. Expose it through a trusted HTTPS tunnel or hosted deployment, then add the public URL as a custom connector (Claude) or a custom MCP app in developer mode (ChatGPT). Do not share a tunneled 2Do endpoint unless you are comfortable exposing your local task data.
@@ -144,8 +150,8 @@ The local endpoint is `http://127.0.0.1:8765/mcp`. Expose it through a trusted H
 For copy-paste setup guidance from the CLI:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do connect claude-cowork
-uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do connect chatgpt
+uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do mcp connect claude-cowork
+uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do mcp connect chatgpt
 ```
 
 - Claude custom connectors: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp>
@@ -208,7 +214,7 @@ uv sync --extra dev
 Run the server from your checkout:
 
 ```bash
-uv run 2do serve
+uv run 2do mcp serve
 ```
 
 Run checks:

@@ -25,6 +25,7 @@
         "--from",
         "git+https://github.com/kingfink/2do-tools@v0.3.0",
         "2do",
+        "mcp",
         "serve"
       ]
     }

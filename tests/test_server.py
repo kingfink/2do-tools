@@ -311,6 +311,21 @@ def test_due_date_filters_exclude_null_due_date_sentinel(fake_2do_db: Path) -> N
     assert [task.title for task in tasks] == ["Dated task"]
 
 
+def test_has_due_date_filter_excludes_tasks_without_due_dates(fake_2do_db: Path) -> None:
+    with sqlite3.connect(fake_2do_db) as connection:
+        _insert_task(
+            connection,
+            primid=4,
+            uid="task-dated",
+            title="Dated task",
+            duedate=DUE_AT,
+        )
+
+    tasks = server._get_tasks(server.TaskFilters(has_due_date=True))
+
+    assert [task.title for task in tasks] == ["Dated task"]
+
+
 @pytest.mark.parametrize(
     ("filters", "expected_titles"),
     [
