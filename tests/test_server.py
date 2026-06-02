@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -311,3 +312,30 @@ def test_validate_backup_db_rejects_missing_required_schema(
     )
 
     assert server._validate_backup_db(staging_dir) is False
+
+
+def test_refresh_backup_promotes_single_valid_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "source"
+    backups_dir = tmp_path / "backups"
+    backup_db_path = backups_dir / "2do.db"
+    metadata_path = backups_dir / "metadata.json"
+    _create_required_schema_backup(source_dir)
+    source_db_path = source_dir / "2do.db"
+
+    backups_dir.mkdir()
+    backup_db_path.write_text("old backup")
+
+    monkeypatch.setattr(server, "BACKUPS_DB_DIR", backups_dir)
+    monkeypatch.setattr(server, "BACKUPS_DB_PATH", backup_db_path)
+    monkeypatch.setattr(server, "BACKUP_METADATA_PATH", metadata_path)
+    monkeypatch.setattr(server, "discover_candidate_dbs", lambda: [source_db_path])
+
+    assert server.refresh_backup() is True
+    assert server._validate_backup_db(backups_dir) is True
+    assert json.loads(metadata_path.read_text()) == {
+        "source_db_path": str(source_db_path),
+    }
+    assert list(backups_dir.glob(".incoming-*")) == []
