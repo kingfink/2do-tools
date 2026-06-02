@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "2do-tools",
   "display_name": "2Do Tools",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Read tasks from the local 2Do macOS app.",
   "long_description": "A local, read-only MCP server for querying open and completed tasks from the 2Do macOS app.",
   "author": {
@@ -23,7 +23,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/kingfink/2do-tools@v0.3.0",
+        "git+https://github.com/kingfink/2do-tools@v0.4.0",
         "2do",
         "mcp",
         "serve"

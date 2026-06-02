@@ -50,12 +50,12 @@ Then add the server to your client. Each client has a one-step install:
 | Client | Simplest install |
 | --- | --- |
 | Claude Code | `claude plugin marketplace add kingfink/2do-tools` then `claude plugin install 2do@2do-tools` |
-| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do mcp serve` |
+| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.4.0 2do mcp serve` |
 | Claude Desktop | Download `2do-tools.mcpb` from the [latest release](https://github.com/kingfink/2do-tools/releases/latest) and double-click it |
 
 Every route runs the same thing under the hood — `uv` fetches and caches the server from GitHub on first run. No clone, no virtualenv, no PATH setup.
 
-> These routes require the `v0.3.0` release. Until it is published, install by hand with the config below.
+> These routes require the `v0.4.0` release. Until it is published, install by hand with the config below.
 
 For any other client, or to configure it by hand, use this config:
 
@@ -67,7 +67,7 @@ For any other client, or to configure it by hand, use this config:
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/kingfink/2do-tools@v0.3.0",
+        "git+https://github.com/kingfink/2do-tools@v0.4.0",
         "2do",
         "mcp",
         "serve"
@@ -77,12 +77,12 @@ For any other client, or to configure it by hand, use this config:
 }
 ```
 
-Upgrade later by bumping the `@v0.3.0` tag to a newer release.
+Upgrade later by bumping the `@v0.4.0` tag to a newer release.
 
 Check your setup:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do doctor
+uvx --from git+https://github.com/kingfink/2do-tools@v0.4.0 2do doctor
 ```
 
 If the server cannot find the 2Do database, make sure 2Do has been opened at least once and that the client running this server has permission to read `~/Library/Group Containers`.
@@ -159,7 +159,7 @@ Cowork and ChatGPT reach MCP servers from the cloud, so a local stdio server is 
 Run the server with HTTP transport:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do \
+uvx --from git+https://github.com/kingfink/2do-tools@v0.4.0 2do \
   mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
 ```
 
@@ -168,8 +168,8 @@ The local endpoint is `http://127.0.0.1:8765/mcp`. Expose it through a trusted H
 For copy-paste setup guidance from the CLI:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do mcp connect claude-cowork
-uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do mcp connect chatgpt
+uvx --from git+https://github.com/kingfink/2do-tools@v0.4.0 2do mcp connect claude-cowork
+uvx --from git+https://github.com/kingfink/2do-tools@v0.4.0 2do mcp connect chatgpt
 ```
 
 - Claude custom connectors: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp>
@@ -251,7 +251,7 @@ the GitHub release from CI after that PR merges.
 Prepare the release PR from GitHub Actions:
 
 1. Open Actions > Prepare Release PR > Run workflow.
-2. Enter the tag, such as `v0.3.0`.
+2. Enter the tag, such as `v0.4.0`.
 3. Merge the generated PR after CI passes.
 
 The workflow needs permission to create pull requests. Enable Settings > Actions
@@ -262,11 +262,11 @@ the permission and rerun the workflow with the same tag.
 To prepare the same PR locally instead, run this from a clean checkout:
 
 ```bash
-scripts/prepare-release.sh v0.3.0
+scripts/prepare-release.sh v0.4.0
 ```
 
 `scripts/prepare-release.sh` checks out `master`, pulls the latest `origin/master`,
-creates `codex/release-v0.3.0`, updates the version references in
+creates `codex/release-v0.4.0`, updates the version references in
 `pyproject.toml`, `mcpb/manifest.json`, `mcpb/server.py`, and this README, runs
 the standard checks, commits the version bump, pushes the release branch, and
 opens the PR. The version update and validation logic lives in
@@ -276,7 +276,7 @@ checks.
 After the PR merges, publish the release from GitHub Actions:
 
 1. Open Actions > Release > Run workflow.
-2. Enter the same tag, such as `v0.3.0`.
+2. Enter the same tag, such as `v0.4.0`.
 3. Run the workflow from `master`.
 
 The workflow installs `mcpb`, verifies that the checked-out `master` version
