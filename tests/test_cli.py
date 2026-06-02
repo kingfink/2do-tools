@@ -42,9 +42,9 @@ def test_2do_task_lists_open_tasks_by_default(
 
     assert captured_filters == [server.TaskFilters(completed=False)]
     assert capsys.readouterr().out == (
-        "List   Status  Task         Due  Tags\n"
-        "-----  ------  -----------  ---  ----\n"
-        "Inbox  [ ]     Active task       Work\n"
+        "Status  List   Task         Due\n"
+        "------  -----  -----------  ---\n"
+        "[ ]     Inbox  Active task\n"
     )
 
 

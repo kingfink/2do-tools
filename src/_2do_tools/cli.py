@@ -289,17 +289,16 @@ def _print_task_table(tasks: list[server.Task]) -> None:
         return
 
     rows = [_task_table_row(task) for task in tasks]
-    for line in _format_table(["List", "Status", "Task", "Due", "Tags"], rows):
+    for line in _format_table(["Status", "List", "Task", "Due"], rows):
         print(line)
 
 
 def _task_table_row(task: server.Task) -> list[str]:
     return [
-        task.list.name,
         "[x]" if task.completed else "[ ]",
+        task.list.name,
         task.title,
         task.date_due.date().isoformat() if task.date_due is not None else "",
-        ", ".join(tag.name for tag in task.tags),
     ]
 
 
