@@ -214,22 +214,25 @@ uv run --extra dev ruff format --check .
 Releases use a two-step flow: prepare a normal version-bump PR, then publish
 the GitHub release from CI after that PR merges.
 
-Prepare the release PR from a clean checkout:
+Prepare the release PR from GitHub Actions:
+
+1. Open Actions > Prepare Release PR > Run workflow.
+2. Enter the tag, such as `v0.3.0`.
+3. Merge the generated PR after CI passes.
+
+To prepare the same PR locally instead, run this from a clean checkout:
 
 ```bash
-git checkout master
-git pull --ff-only origin master
-git checkout -b codex/release-v0.3.0
 scripts/prepare-release.sh v0.3.0
-git push -u origin codex/release-v0.3.0
-gh pr create --base master --head codex/release-v0.3.0 --title "Bump version to v0.3.0"
 ```
 
-`scripts/prepare-release.sh` updates the version references in `pyproject.toml`,
-`mcpb/manifest.json`, `mcpb/server.py`, and this README, runs the standard
-checks, and commits the version bump. The version update and validation logic
-lives in `scripts/release_metadata.py` so local preparation and CI use the same
-metadata checks.
+`scripts/prepare-release.sh` checks out `master`, pulls the latest `origin/master`,
+creates `codex/release-v0.3.0`, updates the version references in
+`pyproject.toml`, `mcpb/manifest.json`, `mcpb/server.py`, and this README, runs
+the standard checks, commits the version bump, pushes the release branch, and
+opens the PR. The version update and validation logic lives in
+`scripts/release_metadata.py` so local preparation and CI use the same metadata
+checks.
 
 After the PR merges, publish the release from GitHub Actions:
 
