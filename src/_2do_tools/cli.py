@@ -40,14 +40,10 @@ REMOTE_CONNECTOR_ALIASES = {
 
 
 def main(argv: list[str] | None = None) -> int:
-    return _main(argv, prog="2do-tools", serve_by_default=True)
+    return _main(argv, prog="2do")
 
 
-def main_2do(argv: list[str] | None = None) -> int:
-    return _main(argv, prog="2do", serve_by_default=False)
-
-
-def _main(argv: list[str] | None, *, prog: str, serve_by_default: bool) -> int:
+def _main(argv: list[str] | None, *, prog: str) -> int:
     parser = argparse.ArgumentParser(prog=prog)
     subparsers = parser.add_subparsers(dest="command")
 
@@ -99,9 +95,6 @@ def _main(argv: list[str] | None, *, prog: str, serve_by_default: bool) -> int:
     args = parser.parse_args(argv)
 
     if args.command is None:
-        if serve_by_default:
-            return _serve("stdio")
-
         parser.print_help()
         return 0
 
@@ -215,7 +208,7 @@ def _serve(transport: str, *, host: str = "127.0.0.1", port: int = 8765) -> int:
 
 
 def _doctor() -> int:
-    print("2do-tools doctor")
+    print("2do doctor")
     print(f"Backup directory: {backups_db_dir()}")
 
     candidates = server.discover_candidate_dbs()
@@ -256,7 +249,7 @@ def _connect(
 
             Start the local Streamable HTTP server:
 
-              2do-tools serve --transport streamable-http --host {host} --port {port}
+              2do serve --transport streamable-http --host {host} --port {port}
 
             Local endpoint:
 

@@ -12,7 +12,7 @@ import os
 import sys
 
 GIT_REF = "git+https://github.com/kingfink/2do-tools@v0.3.0"
-COMMAND = ("uvx", "--from", GIT_REF, "2do-tools", "serve")
+COMMAND = ("uvx", "--from", GIT_REF, "2do", "serve")
 
 
 def main() -> int:

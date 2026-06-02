@@ -38,7 +38,7 @@ def test_2do_tasks_lists_open_tasks_by_default(
 
     monkeypatch.setattr(cli.server, "_get_tasks", get_tasks)
 
-    assert cli.main_2do(["tasks"]) == 0
+    assert cli.main(["tasks"]) == 0
 
     assert captured_filters == [server.TaskFilters(completed=False)]
     assert capsys.readouterr().out == "[ ] Active task - Inbox - Work\n"
@@ -54,7 +54,7 @@ def test_2do_tasks_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli.server, "_get_tasks", get_tasks)
 
     assert (
-        cli.main_2do(
+        cli.main(
             [
                 "tasks",
                 "--completed",
@@ -88,7 +88,7 @@ def test_2do_tasks_prints_json(
 ) -> None:
     monkeypatch.setattr(cli.server, "_get_tasks", lambda filters: [_task()])
 
-    assert cli.main_2do(["tasks", "--json"]) == 0
+    assert cli.main(["tasks", "--json"]) == 0
 
     output = json.loads(capsys.readouterr().out)
     assert output[0]["title"] == "Active task"
@@ -111,6 +111,18 @@ def test_2do_lists_prints_lists(
         ],
     )
 
-    assert cli.main_2do(["lists"]) == 0
+    assert cli.main(["lists"]) == 0
 
     assert capsys.readouterr().out == "Inbox - twodo://x-callback-url/showlist?name=Inbox\n"
+
+
+def test_2do_without_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main([]) == 0
+
+    assert capsys.readouterr().out.startswith("usage: 2do ")
+
+
+def test_2do_connect_recommends_2do_serve(capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["connect", "chatgpt"]) == 0
+
+    assert "2do serve --transport streamable-http" in capsys.readouterr().out
