@@ -41,7 +41,11 @@ def test_2do_task_lists_open_tasks_by_default(
     assert cli.main(["task", "list"]) == 0
 
     assert captured_filters == [server.TaskFilters(completed=False)]
-    assert capsys.readouterr().out == "[ ] Active task - Inbox - Work\n"
+    assert capsys.readouterr().out == (
+        "List   Status  Task         Due  Tags\n"
+        "-----  ------  -----------  ---  ----\n"
+        "Inbox  [ ]     Active task       Work\n"
+    )
 
 
 def test_2do_task_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:

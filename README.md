@@ -55,7 +55,7 @@ Then add the server to your client. Each client has a one-step install:
 
 Every route runs the same thing under the hood — `uv` fetches and caches the server from GitHub on first run. No clone, no virtualenv, no PATH setup.
 
-> These routes require the `v0.4.0` release. Until it is published, install by hand with the config below.
+> These routes require the `v0.4.0` release or newer.
 
 For any other client, or to configure it by hand, use this config:
 
@@ -77,7 +77,30 @@ For any other client, or to configure it by hand, use this config:
 }
 ```
 
-Upgrade later by bumping the `@v0.4.0` tag to a newer release.
+### Updating
+
+Use the newest tag from the [latest release](https://github.com/kingfink/2do-tools/releases/latest)
+when updating.
+
+For the standalone CLI installed with `uv tool install`, reinstall with the new
+tag:
+
+```bash
+uv tool install --force "git+https://github.com/kingfink/2do-tools@v0.4.0"
+```
+
+For Codex, replace the MCP entry with the new tag:
+
+```bash
+codex mcp remove 2do
+codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.4.0 2do mcp serve
+```
+
+For manual MCP JSON configs, change the `@v0.4.0` tag in the `uvx --from`
+argument and restart the client. For Claude Code plugins, run
+`claude plugin update 2do` and restart Claude Code. For Claude Desktop, download
+the latest `2do-tools.mcpb` release asset and install it over the existing
+extension.
 
 Check your setup:
 
@@ -89,7 +112,33 @@ If the server cannot find the 2Do database, make sure 2Do has been opened at lea
 
 ## CLI
 
-The package also installs a local `2do` command for quick task lookups:
+Install the CLI as a standalone command with `uv`:
+
+```bash
+uv tool install "git+https://github.com/kingfink/2do-tools@v0.4.0"
+uv tool update-shell
+```
+
+For local development from a checkout, install the editable package:
+
+```bash
+uv tool install --editable .
+uv tool update-shell
+```
+
+Open a new terminal after `uv tool update-shell`, or run
+`export PATH="$(uv tool dir --bin):$PATH"` in the current shell. The `2do`
+command is available in `v0.4.0` and newer; the older `v0.3.0` release installed
+the previous `2do-mcp` command name.
+
+Verify the CLI:
+
+```bash
+2do --help
+2do doctor
+```
+
+Then use it for quick task lookups:
 
 ```bash
 2do task list
@@ -153,6 +202,10 @@ claude plugin install 2do@2do-tools
 For Codex, use the `codex mcp add` command from the Install table above — Codex installs MCP servers directly rather than from a plugin marketplace.
 
 ### Remote connectors (Claude Cowork, ChatGPT)
+
+> This section has not been fully validated end to end yet. Treat it as
+> provisional guidance until the remote connector flow has been confirmed with
+> each client.
 
 Cowork and ChatGPT reach MCP servers from the cloud, so a local stdio server is not enough — you must expose a Streamable HTTP endpoint over HTTPS.
 
