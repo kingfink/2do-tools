@@ -1,11 +1,11 @@
 {
-  "name": "2do-mcp",
+  "name": "2do-tools",
   "owner": {
     "name": "Tim Finkel",
     "url": "https://github.com/kingfink"
   },
   "metadata": {
-    "description": "Claude Code plugin marketplace for the 2Do MCP server.",
+    "description": "Claude Code plugin marketplace for the 2Do Tools server.",
     "version": "0.1.0"
   },
   "plugins": [
@@ -16,7 +16,7 @@
         "name": "Tim Finkel",
         "url": "https://github.com/kingfink"
       },
-      "homepage": "https://github.com/kingfink/2do-mcp",
+      "homepage": "https://github.com/kingfink/2do-tools",
       "tags": [
         "2do",
         "macos",

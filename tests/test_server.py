@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import _2do_mcp.server as server
+import _2do_tools.server as server
 
 CREATED_AT = datetime(2024, 1, 2, 12, 0, tzinfo=UTC).timestamp()
 DUE_AT = datetime(2024, 1, 4, 9, 0, tzinfo=UTC).timestamp()

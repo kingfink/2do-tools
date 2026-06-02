@@ -1,7 +1,7 @@
 # Claude Desktop MCPB Scaffold
 
 This directory contains the MCPB manifest and entry point used to package
-2Do MCP as a Claude Desktop extension.
+2Do Tools as a Claude Desktop extension.
 
 Build from the repository root:
 
@@ -9,8 +9,8 @@ Build from the repository root:
 scripts/build-mcpb.sh
 ```
 
-The script creates a temporary bundle directory under `dist/mcpb/2do-mcp` and
-packs `dist/2do-mcp.mcpb`.
+The script creates a temporary bundle directory under `dist/mcpb/2do-tools` and
+packs `dist/2do-tools.mcpb`.
 
 Install the MCPB CLI first if needed:
 

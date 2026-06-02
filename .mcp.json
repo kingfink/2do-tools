@@ -5,8 +5,8 @@
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/kingfink/2do-mcp@v0.1.0",
-        "2do-mcp",
+        "git+https://github.com/kingfink/2do-tools@v0.3.0",
+        "2do-tools",
         "serve"
       ]
     }

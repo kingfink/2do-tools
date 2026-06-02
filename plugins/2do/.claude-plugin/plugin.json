@@ -7,6 +7,6 @@
     "name": "Tim Finkel",
     "url": "https://github.com/kingfink"
   },
-  "homepage": "https://github.com/kingfink/2do-mcp",
+  "homepage": "https://github.com/kingfink/2do-tools",
   "mcpServers": "./.mcp.json"
 }

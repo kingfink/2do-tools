@@ -47,7 +47,7 @@ if gh release view "$tag" >/dev/null 2>&1; then
   # Release already exists (e.g. retrying after a failure) — just refresh the
   # bundle asset rather than recreating the release.
   echo "Release $tag already exists; refreshing the bundle asset."
-  gh release upload "$tag" "$repo_root/dist/2do-mcp.mcpb" --clobber
+  gh release upload "$tag" "$repo_root/dist/2do-tools.mcpb" --clobber
 else
   # Let gh create the tag at the current commit as part of publishing the
   # release (--target). The tag is created on the remote ONLY when the release
@@ -55,10 +55,10 @@ else
   # no local tag to get out of sync. Do not pre-create a local tag: gh refuses
   # to publish if a same-named local tag exists but has not been pushed.
   gh release create "$tag" \
-    "$repo_root/dist/2do-mcp.mcpb" \
-    --title "2do-mcp $tag" \
+    "$repo_root/dist/2do-tools.mcpb" \
+    --title "2do-tools $tag" \
     --generate-notes \
     --target "$(git rev-parse HEAD)"
 fi
 
-echo "Done. Release $tag published with dist/2do-mcp.mcpb attached."
+echo "Done. Release $tag published with dist/2do-tools.mcpb attached."

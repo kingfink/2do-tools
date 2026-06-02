@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update and verify release metadata for 2do-mcp."""
+"""Update and verify release metadata for 2do-tools."""
 
 from __future__ import annotations
 
