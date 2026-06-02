@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MCPB entry point for 2do-mcp.
+"""MCPB entry point for 2do-tools.
 
 The bundle does not ship the server source or its dependencies. The actual
 launch is driven by ``server.mcp_config`` in manifest.json, which runs the
@@ -11,8 +11,8 @@ entry point directly. Both paths require ``uv`` to be installed.
 import os
 import sys
 
-GIT_REF = "git+https://github.com/kingfink/2do-mcp@v0.3.0"
-COMMAND = ("uvx", "--from", GIT_REF, "2do-mcp", "serve")
+GIT_REF = "git+https://github.com/kingfink/2do-tools@v0.3.0"
+COMMAND = ("uvx", "--from", GIT_REF, "2do-tools", "serve")
 
 
 def main() -> int:

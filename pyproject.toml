@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "2do-mcp"
+name = "2do-tools"
 version = "0.3.0"
 description = "MCP server for reading tasks from 2Do on macOS"
 readme = "README.md"
@@ -21,10 +21,10 @@ dev = [
 ]
 
 [project.scripts]
-"2do-mcp" = "_2do_mcp.cli:main"
+"2do-tools" = "_2do_tools.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/_2do_mcp"]
+packages = ["src/_2do_tools"]
 
 [tool.ruff]
 line-length = 100

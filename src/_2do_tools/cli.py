@@ -39,7 +39,7 @@ REMOTE_CONNECTOR_ALIASES = {
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="2do-mcp")
+    parser = argparse.ArgumentParser(prog="2do-tools")
     subparsers = parser.add_subparsers(dest="command")
 
     serve_parser = subparsers.add_parser("serve")
@@ -105,7 +105,7 @@ def _serve(transport: str, *, host: str = "127.0.0.1", port: int = 8765) -> int:
 
 
 def _doctor() -> int:
-    print("2do-mcp doctor")
+    print("2do-tools doctor")
     print(f"Backup directory: {backups_db_dir()}")
 
     candidates = server.discover_candidate_dbs()
@@ -142,11 +142,11 @@ def _connect(
     print(
         dedent(
             f"""
-            2Do MCP remote connector helper: {connector["display_name"]}
+            2Do Tools remote connector helper: {connector["display_name"]}
 
             Start the local Streamable HTTP server:
 
-              2do-mcp serve --transport streamable-http --host {host} --port {port}
+              2do-tools serve --transport streamable-http --host {host} --port {port}
 
             Local endpoint:
 

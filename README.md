@@ -1,4 +1,4 @@
-# 2Do MCP Server
+# 2Do Tools
 
 An MCP server for reading tasks from 2Do.
 
@@ -9,7 +9,7 @@ This project is experimental and provided as-is, without warranty, support, or
 liability for data loss, service interruption, or other issues.
 
 The server keeps its own local backup of 2Do's SQLite database under
-`~/Library/Application Support/2do-mcp/backups/` and serves read-only task
+`~/Library/Application Support/2do-tools/backups/` and serves read-only task
 queries from that copy. It does not write to the original 2Do database.
 
 ## Tools
@@ -55,9 +55,9 @@ Then add the server to your client. Each client has a one-step install:
 
 | Client | Simplest install |
 | --- | --- |
-| Claude Code | `claude plugin marketplace add kingfink/2do-mcp` then `claude plugin install 2do@2do-mcp` |
-| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp serve` |
-| Claude Desktop | Download `2do-mcp.mcpb` from the [latest release](https://github.com/kingfink/2do-mcp/releases/latest) and double-click it |
+| Claude Code | `claude plugin marketplace add kingfink/2do-tools` then `claude plugin install 2do@2do-tools` |
+| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do-tools serve` |
+| Claude Desktop | Download `2do-tools.mcpb` from the [latest release](https://github.com/kingfink/2do-tools/releases/latest) and double-click it |
 
 Every route runs the same thing under the hood — `uv` fetches and caches the server from GitHub on first run. No clone, no virtualenv, no PATH setup.
 
@@ -73,8 +73,8 @@ For any other client, or to configure it by hand, use this config:
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/kingfink/2do-mcp@v0.3.0",
-        "2do-mcp",
+        "git+https://github.com/kingfink/2do-tools@v0.3.0",
+        "2do-tools",
         "serve"
       ]
     }
@@ -87,7 +87,7 @@ Upgrade later by bumping the `@v0.3.0` tag to a newer release.
 Check your setup:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp doctor
+uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do-tools doctor
 ```
 
 If the server cannot find the 2Do database, make sure 2Do has been opened at least once and that the client running this server has permission to read `~/Library/Group Containers`.
@@ -96,7 +96,7 @@ If the server cannot find the 2Do database, make sure 2Do has been opened at lea
 
 ### Claude Desktop bundle (MCPB)
 
-The simplest path is to download the prebuilt `2do-mcp.mcpb` from the [latest release](https://github.com/kingfink/2do-mcp/releases/latest) and double-click it (or drag it into Settings > Extensions > Advanced settings > Install Extension). The bundle launches the server via `uvx`, so `uv` must be installed.
+The simplest path is to download the prebuilt `2do-tools.mcpb` from the [latest release](https://github.com/kingfink/2do-tools/releases/latest) and double-click it (or drag it into Settings > Extensions > Advanced settings > Install Extension). The bundle launches the server via `uvx`, so `uv` must be installed.
 
 To build the bundle yourself from a checkout:
 
@@ -105,15 +105,15 @@ npm install -g @anthropic-ai/mcpb
 scripts/build-mcpb.sh
 ```
 
-The script writes `dist/2do-mcp.mcpb`.
+The script writes `dist/2do-tools.mcpb`.
 
 ### Claude Code plugin marketplace
 
 This repo doubles as a Claude Code plugin marketplace. The plugin definition lives under `plugins/2do/`.
 
 ```bash
-claude plugin marketplace add kingfink/2do-mcp
-claude plugin install 2do@2do-mcp
+claude plugin marketplace add kingfink/2do-tools
+claude plugin install 2do@2do-tools
 ```
 
 For Codex, use the `codex mcp add` command from the Install table above — Codex installs MCP servers directly rather than from a plugin marketplace.
@@ -125,7 +125,7 @@ Cowork and ChatGPT reach MCP servers from the cloud, so a local stdio server is 
 Run the server with HTTP transport:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp \
+uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do-tools \
   serve --transport streamable-http --host 127.0.0.1 --port 8765
 ```
 
@@ -134,8 +134,8 @@ The local endpoint is `http://127.0.0.1:8765/mcp`. Expose it through a trusted H
 For copy-paste setup guidance from the CLI:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp connect claude-cowork
-uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp connect chatgpt
+uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do-tools connect claude-cowork
+uvx --from git+https://github.com/kingfink/2do-tools@v0.3.0 2do-tools connect chatgpt
 ```
 
 - Claude custom connectors: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp>
@@ -144,7 +144,7 @@ uvx --from git+https://github.com/kingfink/2do-mcp@v0.3.0 2do-mcp connect chatgp
 ## Backup Behavior
 
 On startup, the server checks for
-`~/Library/Application Support/2do-mcp/backups/2do.db`. If that backup does not
+`~/Library/Application Support/2do-tools/backups/2do.db`. If that backup does not
 exist, it searches for candidate `2do.db` files in this order:
 
 1. 2Do's known app-group container:
@@ -158,7 +158,7 @@ directory name is the app group shared by 2Do and its helpers/extensions. The
 `BeehiveSharedDefaultsKey` value is a 2Do-specific app-bundle clue, not a
 general macOS standard.
 
-Task and count tools also check whether at least five minutes have elapsed since
+Task tools also check whether at least five minutes have elapsed since
 the last automatic refresh check before opening the read-only backup.
 
 If a previous refresh recorded the source database path and the source `2do.db*`
@@ -167,7 +167,7 @@ Otherwise, refreshes follow this flow:
 
 1. Copy each candidate database and its related SQLite sidecar files, such as
    `2do.db-wal` and `2do.db-shm`, into a temporary
-   `~/Library/Application Support/2do-mcp/backups/.incoming-*` directory.
+   `~/Library/Application Support/2do-tools/backups/.incoming-*` directory.
 2. Validate the copied database with SQLite `PRAGMA integrity_check`.
 3. Confirm the expected task, list, and tag storage exists.
 4. Confirm every column used by task, list, and tag queries exists.
@@ -179,7 +179,7 @@ refresh fails instead of guessing.
 ## Privacy
 
 The backup is stored locally under
-`~/Library/Application Support/2do-mcp/backups/`. It may contain task titles,
+`~/Library/Application Support/2do-tools/backups/`. It may contain task titles,
 notes, list names, tags, timestamps, and other 2Do data.
 
 The URL scheme navigation tools launch `twodo://` URLs on the Mac running the
@@ -198,7 +198,7 @@ uv sync --extra dev
 Run the server from your checkout:
 
 ```bash
-uv run 2do-mcp serve
+uv run 2do-tools serve
 ```
 
 Run checks:
@@ -247,7 +247,7 @@ After the PR merges, publish the release from GitHub Actions:
 
 The workflow installs `mcpb`, verifies that the checked-out `master` version
 metadata matches the tag, and runs `scripts/release.sh`. The release script
-validates and packs `dist/2do-mcp.mcpb`, creates the GitHub release, uploads the
+validates and packs `dist/2do-tools.mcpb`, creates the GitHub release, uploads the
 bundle asset, and creates the remote tag at the current `master` commit.
 
 ## TODOs

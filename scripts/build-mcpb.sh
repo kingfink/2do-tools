@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-bundle_dir="$repo_root/dist/mcpb/2do-mcp"
-output="$repo_root/dist/2do-mcp.mcpb"
+bundle_dir="$repo_root/dist/mcpb/2do-tools"
+output="$repo_root/dist/2do-tools.mcpb"
 
 if ! command -v mcpb >/dev/null 2>&1; then
   echo "mcpb CLI not found. Install it with: npm install -g @anthropic-ai/mcpb" >&2

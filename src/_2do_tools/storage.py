@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 def app_support_dir() -> Path:
-    return Path.home() / "Library" / "Application Support" / "2do-mcp"
+    return Path.home() / "Library" / "Application Support" / "2do-tools"
 
 
 def backups_db_dir() -> Path:

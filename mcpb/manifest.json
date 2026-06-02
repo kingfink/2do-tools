@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.4",
-  "name": "2do-mcp",
-  "display_name": "2Do MCP",
+  "name": "2do-tools",
+  "display_name": "2Do Tools",
   "version": "0.3.0",
   "description": "Read tasks from the local 2Do macOS app.",
   "long_description": "A local, read-only MCP server for querying open and completed tasks from the 2Do macOS app.",
@@ -11,11 +11,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/kingfink/2do-mcp.git"
+    "url": "https://github.com/kingfink/2do-tools.git"
   },
-  "homepage": "https://github.com/kingfink/2do-mcp",
-  "documentation": "https://github.com/kingfink/2do-mcp#readme",
-  "support": "https://github.com/kingfink/2do-mcp/issues",
+  "homepage": "https://github.com/kingfink/2do-tools",
+  "documentation": "https://github.com/kingfink/2do-tools#readme",
+  "support": "https://github.com/kingfink/2do-tools/issues",
   "server": {
     "type": "binary",
     "entry_point": "server.py",
@@ -23,8 +23,8 @@
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/kingfink/2do-mcp@v0.3.0",
-        "2do-mcp",
+        "git+https://github.com/kingfink/2do-tools@v0.3.0",
+        "2do-tools",
         "serve"
       ]
     }

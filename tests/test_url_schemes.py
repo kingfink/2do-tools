@@ -1,4 +1,4 @@
-import _2do_mcp.url_schemes as url_schemes
+import _2do_tools.url_schemes as url_schemes
 
 
 def test_show_task_url_encodes_uid() -> None:
