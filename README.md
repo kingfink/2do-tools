@@ -220,6 +220,11 @@ Prepare the release PR from GitHub Actions:
 2. Enter the tag, such as `v0.3.0`.
 3. Merge the generated PR after CI passes.
 
+The workflow needs permission to create pull requests. Enable Settings > Actions
+> General > Workflow permissions > Allow GitHub Actions to create and approve
+pull requests. If a run pushes the release branch but cannot open the PR, fix
+the permission and rerun the workflow with the same tag.
+
 To prepare the same PR locally instead, run this from a clean checkout:
 
 ```bash

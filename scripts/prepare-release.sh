@@ -129,25 +129,40 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-if git show-ref --verify --quiet "refs/heads/$release_branch"; then
-  echo "Release branch already exists locally: $release_branch" >&2
-  exit 1
-fi
-
+release_branch_exists=false
+release_branch_was_prepared=false
 if git ls-remote --exit-code --heads "$remote" "$release_branch" >/dev/null 2>&1; then
-  echo "Release branch already exists on $remote: $release_branch" >&2
-  exit 1
+  release_branch_exists=true
 fi
 
-echo "Creating release branch $release_branch..."
-git checkout -b "$release_branch"
+if git show-ref --verify --quiet "refs/heads/$release_branch"; then
+  echo "Checking out existing local release branch $release_branch..."
+  git checkout "$release_branch"
+  release_branch_was_prepared=true
+elif [[ "$release_branch_exists" == true ]]; then
+  echo "Checking out existing remote release branch $release_branch..."
+  git fetch "$remote" "refs/heads/$release_branch:refs/remotes/$remote/$release_branch"
+  git checkout --track -b "$release_branch" "$remote/$release_branch"
+  release_branch_was_prepared=true
+else
+  echo "Creating release branch $release_branch..."
+  git checkout -b "$release_branch"
+fi
 
-python3 scripts/release_metadata.py update "$tag"
+if [[ "$release_branch_exists" == true ]]; then
+  echo "Updating $release_branch from $remote..."
+  git pull --ff-only "$remote" "$release_branch"
+fi
+
+if [[ "$release_branch_was_prepared" == false ]]; then
+  python3 scripts/release_metadata.py update "$tag"
+fi
 
 echo "Verifying release metadata..."
 python3 scripts/release_metadata.py verify "$tag"
 
-if git diff --quiet -- README.md pyproject.toml mcpb/manifest.json mcpb/server.py; then
+if [[ "$release_branch_was_prepared" == false ]] \
+  && git diff --quiet -- README.md pyproject.toml mcpb/manifest.json mcpb/server.py; then
   echo "No version reference changes found for $tag." >&2
   exit 1
 fi
@@ -158,8 +173,10 @@ uv run --extra dev ruff check .
 uv run --extra dev ruff format --check .
 python3 -m json.tool mcpb/manifest.json >/dev/null
 
-git add README.md pyproject.toml mcpb/manifest.json mcpb/server.py
-git commit -m "Bump version to $version"
+if [[ "$release_branch_was_prepared" == false ]]; then
+  git add README.md pyproject.toml mcpb/manifest.json mcpb/server.py
+  git commit -m "Bump version to $version"
+fi
 
 if [[ "$push_branch" == true ]]; then
   echo "Pushing $release_branch to $remote..."
@@ -175,7 +192,29 @@ if [[ "$create_pr" == true ]]; then
 After this PR merges, run the Release workflow with tag $tag."
 
   echo "Opening release PR..."
-  pr_url="$(gh pr create --base "$base_branch" --head "$release_branch" --title "$pr_title" --body "$pr_body")"
+  pr_url="$(gh pr view "$release_branch" --json url --jq .url 2>/dev/null || true)"
+  if [[ -z "$pr_url" ]]; then
+    pr_create_output="$(
+      gh pr create --base "$base_branch" --head "$release_branch" --title "$pr_title" --body "$pr_body" 2>&1
+    )" || {
+      echo "$pr_create_output" >&2
+
+      if [[ "$pr_create_output" == *"GitHub Actions is not permitted to create or approve pull requests"* ]]; then
+        cat >&2 <<EOF
+
+GitHub blocked this workflow token from creating pull requests.
+
+To allow the Prepare Release PR workflow to open the PR:
+- Enable Settings > Actions > General > Workflow permissions > Allow GitHub Actions to create and approve pull requests.
+
+The release branch was pushed successfully: $release_branch
+EOF
+      fi
+
+      exit 1
+    }
+    pr_url="$pr_create_output"
+  fi
   echo "Prepared release $tag PR: $pr_url"
   echo "Merge it, then run the Release workflow with tag $tag."
 else
