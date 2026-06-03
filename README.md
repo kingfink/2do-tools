@@ -54,12 +54,12 @@ Then add the server to your client. Each client has a one-step install:
 | Client | Simplest install |
 | --- | --- |
 | Claude Code | `claude plugin marketplace add kingfink/2do-tools` then `claude plugin install 2do@2do-tools` |
-| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.5.0 2do mcp serve` |
+| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.6.0 2do mcp serve` |
 | Claude Desktop | Download `2do-tools.mcpb` from the [latest release](https://github.com/kingfink/2do-tools/releases/latest) and double-click it |
 
 Every route runs the same thing under the hood — `uv` fetches and caches the server from GitHub on first run. No clone, no virtualenv, no PATH setup.
 
-> These routes require the `v0.5.0` release or newer.
+> These routes require the `v0.6.0` release or newer.
 
 For any other client, or to configure it by hand, use this config:
 
@@ -71,7 +71,7 @@ For any other client, or to configure it by hand, use this config:
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/kingfink/2do-tools@v0.5.0",
+        "git+https://github.com/kingfink/2do-tools@v0.6.0",
         "2do",
         "mcp",
         "serve"
@@ -90,17 +90,17 @@ For the standalone CLI installed with `uv tool install`, reinstall with the new
 tag:
 
 ```bash
-uv tool install --force "git+https://github.com/kingfink/2do-tools@v0.5.0"
+uv tool install --force "git+https://github.com/kingfink/2do-tools@v0.6.0"
 ```
 
 For Codex, replace the MCP entry with the new tag:
 
 ```bash
 codex mcp remove 2do
-codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.5.0 2do mcp serve
+codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.6.0 2do mcp serve
 ```
 
-For manual MCP JSON configs, change the `@v0.5.0` tag in the `uvx --from`
+For manual MCP JSON configs, change the `@v0.6.0` tag in the `uvx --from`
 argument and restart the client. For Claude Code plugins, run
 `claude plugin update 2do` and restart Claude Code. For Claude Desktop, download
 the latest `2do-tools.mcpb` release asset and install it over the existing
@@ -109,7 +109,7 @@ extension.
 Check your setup:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.5.0 2do doctor
+uvx --from git+https://github.com/kingfink/2do-tools@v0.6.0 2do doctor
 ```
 
 If the server cannot find the 2Do database, make sure 2Do has been opened at least once and that the client running this server has permission to read `~/Library/Group Containers`.
@@ -119,7 +119,7 @@ If the server cannot find the 2Do database, make sure 2Do has been opened at lea
 Install the CLI as a standalone command with `uv`:
 
 ```bash
-uv tool install "git+https://github.com/kingfink/2do-tools@v0.5.0"
+uv tool install "git+https://github.com/kingfink/2do-tools@v0.6.0"
 uv tool update-shell
 ```
 
@@ -223,7 +223,7 @@ task, list, or search views on the host Mac.
 Run the server with HTTP transport:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.5.0 2do \
+uvx --from git+https://github.com/kingfink/2do-tools@v0.6.0 2do \
   mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
 ```
 
@@ -234,8 +234,8 @@ authentication before traffic reaches the MCP server.
 For copy-paste setup guidance from the CLI:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.5.0 2do mcp connect claude-cowork
-uvx --from git+https://github.com/kingfink/2do-tools@v0.5.0 2do mcp connect chatgpt
+uvx --from git+https://github.com/kingfink/2do-tools@v0.6.0 2do mcp connect claude-cowork
+uvx --from git+https://github.com/kingfink/2do-tools@v0.6.0 2do mcp connect chatgpt
 ```
 
 - Claude custom connectors: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp>
@@ -321,7 +321,7 @@ the GitHub release from CI after that PR merges.
 Prepare the release PR from GitHub Actions:
 
 1. Open Actions > Prepare Release PR > Run workflow.
-2. Enter the tag, such as `v0.5.0`.
+2. Enter the tag, such as `v0.6.0`.
 3. Merge the generated PR after CI passes.
 
 The workflow needs permission to create pull requests. Enable Settings > Actions
@@ -332,11 +332,11 @@ the permission and rerun the workflow with the same tag.
 To prepare the same PR locally instead, run this from a clean checkout:
 
 ```bash
-scripts/prepare-release.sh v0.5.0
+scripts/prepare-release.sh v0.6.0
 ```
 
 `scripts/prepare-release.sh` checks out `master`, pulls the latest `origin/master`,
-creates `codex/release-v0.5.0`, updates the version references in
+creates `codex/release-v0.6.0`, updates the version references in
 `pyproject.toml`, `mcpb/manifest.json`, `mcpb/server.py`, and this README, runs
 the standard checks, commits the version bump, pushes the release branch, and
 opens the PR. The version update and validation logic lives in
@@ -346,7 +346,7 @@ checks.
 After the PR merges, publish the release from GitHub Actions:
 
 1. Open Actions > Release > Run workflow.
-2. Enter the same tag, such as `v0.5.0`.
+2. Enter the same tag, such as `v0.6.0`.
 3. Run the workflow from `master`.
 
 The workflow installs `mcpb`, verifies that the checked-out `master` version
