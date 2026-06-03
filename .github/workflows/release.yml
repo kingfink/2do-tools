@@ -23,13 +23,13 @@ jobs:
 
     steps:
       - name: Check out master
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
 
@@ -43,13 +43,13 @@ jobs:
         run: git ls-files '*.py' -z | xargs -0 python3 -m py_compile
 
       - name: Check linting
-        uses: astral-sh/ruff-action@146cd51f235777a9bc491eead18e0d5a4b05406a # v3
+        uses: astral-sh/ruff-action@v3
         with:
           version: 0.15.15
           args: check --output-format=github .
 
       - name: Check formatting
-        uses: astral-sh/ruff-action@146cd51f235777a9bc491eead18e0d5a4b05406a # v3
+        uses: astral-sh/ruff-action@v3
         with:
           version: 0.15.15
           args: format --check .
