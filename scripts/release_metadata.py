@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -14,9 +15,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TAG_RE = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 VERSION_TAG_RE = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 PYPROJECT_VERSION_RE = re.compile(r'version = "[0-9]+\.[0-9]+\.[0-9]+"')
-INSTALL_REF_RE = re.compile(r"@v[0-9]+\.[0-9]+\.[0-9]+")
+REPO_INSTALL_REF_RE = re.compile(
+    r"git\+https://github\.com/kingfink/2do-tools@(?P<tag>v[0-9]+\.[0-9]+\.[0-9]+)"
+)
+UV_LOCK_PROJECT_VERSION_RE = re.compile(
+    r'(?ms)(\[\[package\]\]\nname = "2do-tools"\nversion = ")[^"]+(")'
+)
 
-INSTALL_REF_FILES = ("README.md", "mcpb/manifest.json", "mcpb/server.py")
+SKIPPED_FALLBACK_DIRS = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".uv-cache"}
 
 
 def repo_path(relative_path: str) -> Path:
@@ -31,6 +37,54 @@ def release_version(tag: str) -> str:
     return match.group("version")
 
 
+def project_version() -> str:
+    project = tomllib.loads(repo_path("pyproject.toml").read_text())
+    return project["project"]["version"]
+
+
+def tracked_paths() -> list[str]:
+    if (REPO_ROOT / ".git").exists():
+        try:
+            result = subprocess.run(
+                ["git", "ls-files", "-z"],
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+                text=False,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            pass
+        else:
+            return [path.decode() for path in result.stdout.split(b"\0") if path]
+
+    paths: list[str] = []
+    for path in REPO_ROOT.rglob("*"):
+        if not path.is_file():
+            continue
+
+        if any(part in SKIPPED_FALLBACK_DIRS for part in path.relative_to(REPO_ROOT).parts):
+            continue
+
+        paths.append(path.relative_to(REPO_ROOT).as_posix())
+
+    return sorted(paths)
+
+
+def tracked_text_files() -> list[str]:
+    text_files: list[str] = []
+
+    for relative_path in tracked_paths():
+        path = repo_path(relative_path)
+        try:
+            path.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        text_files.append(relative_path)
+
+    return text_files
+
+
 def update_text(relative_path: str, replacements: list[tuple[re.Pattern[str], str]]) -> None:
     path = repo_path(relative_path)
     content = path.read_text()
@@ -43,48 +97,102 @@ def update_text(relative_path: str, replacements: list[tuple[re.Pattern[str], st
         path.write_text(updated)
 
 
+def replace_text(relative_path: str, old: str, new: str) -> None:
+    path = repo_path(relative_path)
+    content = path.read_text()
+    updated = content.replace(old, new)
+
+    if updated != content:
+        path.write_text(updated)
+
+
+def update_repo_install_refs(relative_path: str, tag: str) -> None:
+    path = repo_path(relative_path)
+    content = path.read_text()
+    updated = REPO_INSTALL_REF_RE.sub(
+        lambda match: match.group(0).replace(match.group("tag"), tag),
+        content,
+    )
+
+    if updated != content:
+        path.write_text(updated)
+
+
+def update_uv_lock_project_version(version: str) -> None:
+    path = repo_path("uv.lock")
+    if not path.exists():
+        return
+
+    content = path.read_text()
+    updated, count = UV_LOCK_PROJECT_VERSION_RE.subn(
+        lambda match: f"{match.group(1)}{version}{match.group(2)}",
+        content,
+        count=1,
+    )
+
+    if count == 0:
+        raise SystemExit("uv.lock does not contain a 2do-tools package entry")
+
+    if updated != content:
+        path.write_text(updated)
+
+
+def uv_lock_project_version() -> str | None:
+    path = repo_path("uv.lock")
+    if not path.exists():
+        return None
+
+    match = UV_LOCK_PROJECT_VERSION_RE.search(path.read_text())
+    if match is None:
+        return None
+
+    return match.group(0).split('version = "', 1)[1].split('"', 1)[0]
+
+
 def update_release_metadata(tag: str) -> None:
     version = release_version(tag)
+    old_tag = f"v{project_version()}"
 
     update_text("pyproject.toml", [(PYPROJECT_VERSION_RE, f'version = "{version}"')])
-    update_text("mcpb/server.py", [(INSTALL_REF_RE, f"@{tag}")])
-    update_text("README.md", [(VERSION_TAG_RE, tag)])
+
+    for file_name in tracked_text_files():
+        replace_text(file_name, old_tag, tag)
+        update_repo_install_refs(file_name, tag)
 
     manifest_path = repo_path("mcpb/manifest.json")
     manifest = json.loads(manifest_path.read_text())
     manifest["version"] = version
 
-    args = manifest["server"]["mcp_config"]["args"]
-    manifest["server"]["mcp_config"]["args"] = [INSTALL_REF_RE.sub(f"@{tag}", arg) for arg in args]
-
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    update_uv_lock_project_version(version)
 
 
 def verify_release_metadata(tag: str) -> None:
     version = release_version(tag)
 
-    project = tomllib.loads(repo_path("pyproject.toml").read_text())
     manifest = json.loads(repo_path("mcpb/manifest.json").read_text())
 
-    if project["project"]["version"] != version:
+    if project_version() != version:
         raise SystemExit("pyproject.toml version does not match requested release")
 
     if manifest["version"] != version:
         raise SystemExit("mcpb/manifest.json version does not match requested release")
 
-    for file_name in INSTALL_REF_FILES:
-        content = repo_path(file_name).read_text()
-        if f"@{tag}" not in content:
-            raise SystemExit(f"{file_name} does not contain install reference @{tag}")
+    lock_version = uv_lock_project_version()
+    if lock_version is not None and lock_version != version:
+        raise SystemExit("uv.lock 2do-tools version does not match requested release")
 
+    found_install_ref = False
     stale_tags = []
-    for file_name in INSTALL_REF_FILES:
+    for file_name in tracked_text_files():
         content = repo_path(file_name).read_text()
-        stale_tags.extend(
-            f"{file_name}: {match.group(0)}"
-            for match in VERSION_TAG_RE.finditer(content)
-            if match.group(0) != tag
-        )
+        for match in REPO_INSTALL_REF_RE.finditer(content):
+            found_install_ref = True
+            if match.group("tag") != tag:
+                stale_tags.append(f"{file_name}: {match.group('tag')}")
+
+    if not found_install_ref:
+        raise SystemExit("No 2do-tools git install references found")
 
     if stale_tags:
         raise SystemExit("Found stale release tags:\n" + "\n".join(stale_tags))

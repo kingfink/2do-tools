@@ -21,16 +21,16 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Check linting
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@146cd51f235777a9bc491eead18e0d5a4b05406a # v3
         with:
           version: 0.15.15
           args: check --output-format=github .
 
       - name: Check formatting
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@146cd51f235777a9bc491eead18e0d5a4b05406a # v3
         with:
           version: 0.15.15
           args: format --check .

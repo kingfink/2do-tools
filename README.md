@@ -8,6 +8,10 @@ uses macOS application support and group-container paths.
 This project is experimental and provided as-is, without warranty, support, or
 liability for data loss, service interruption, or other issues.
 
+This project is independent and is not affiliated with, endorsed by, or
+supported by the 2Do app or its developer. It uses the 2Do name only to describe
+compatibility.
+
 The server keeps its own local backup of 2Do's SQLite database under
 `~/Library/Application Support/2do-tools/backups/` and serves read-only task
 queries from that copy. It does not write to the original 2Do database.
@@ -127,9 +131,8 @@ uv tool update-shell
 ```
 
 Open a new terminal after `uv tool update-shell`, or run
-`export PATH="$(uv tool dir --bin):$PATH"` in the current shell. The `2do`
-command is available in `v0.5.0` and newer; the older `v0.5.0` release installed
-the previous `2do-mcp` command name.
+`export PATH="$(uv tool dir --bin):$PATH"` in the current shell. Older releases
+installed the previous `2do-mcp` command name.
 
 Verify the CLI:
 
@@ -203,11 +206,19 @@ For Codex, use the `codex mcp add` command from the Install table above — Code
 
 ### Remote connectors (Claude Cowork, ChatGPT)
 
-> This section has not been fully validated end to end yet. Treat it as
-> provisional guidance until the remote connector flow has been confirmed with
-> each client.
+> Advanced, private use only. Prefer the local stdio, plugin, or MCPB install
+> paths unless you specifically need a cloud-hosted client to reach this server.
 
-Cowork and ChatGPT reach MCP servers from the cloud, so a local stdio server is not enough — you must expose a Streamable HTTP endpoint over HTTPS.
+Cowork and ChatGPT reach MCP servers from the cloud, so a local stdio server is
+not enough. The Streamable HTTP transport in this project does not add its own
+authentication layer. If you expose it, put it behind HTTPS and authentication
+that restricts access to trusted users only. A secret or hard-to-guess tunnel URL
+is not authentication.
+
+Do not expose this endpoint publicly. Anyone who can reach the authenticated MCP
+endpoint can query the local 2Do task backup served by this Mac. They may also
+be able to call URL scheme navigation tools that bring 2Do to the front or open
+task, list, or search views on the host Mac.
 
 Run the server with HTTP transport:
 
@@ -216,7 +227,9 @@ uvx --from git+https://github.com/kingfink/2do-tools@v0.5.0 2do \
   mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
 ```
 
-The local endpoint is `http://127.0.0.1:8765/mcp`. Expose it through a trusted HTTPS tunnel or hosted deployment, then add the public URL as a custom connector (Claude) or a custom MCP app in developer mode (ChatGPT). Do not share a tunneled 2Do endpoint unless you are comfortable exposing your local task data.
+The local endpoint is `http://127.0.0.1:8765/mcp`. Expose it only through a
+trusted HTTPS tunnel, reverse proxy, or private deployment that enforces
+authentication before traffic reaches the MCP server.
 
 For copy-paste setup guidance from the CLI:
 
@@ -273,6 +286,10 @@ The URL scheme navigation tools launch `twodo://` URLs on the Mac running the
 MCP server. If you expose the server through a remote connector, remote clients
 that can call these tools can also bring 2Do to the front or open task/list/search
 views on that Mac.
+
+## License
+
+This project is available under the MIT License. See [LICENSE](LICENSE).
 
 ## Development
 

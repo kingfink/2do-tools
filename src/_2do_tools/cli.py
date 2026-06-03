@@ -10,25 +10,25 @@ from .storage import backups_db_dir, backups_db_path
 REMOTE_CONNECTOR_DOCS = {
     "chatgpt": {
         "display_name": "ChatGPT",
-        "public_url_label": "ChatGPT MCP app URL",
+        "public_url_label": "Authenticated ChatGPT MCP app URL",
         "docs_url": (
             "https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt"
         ),
         "next_steps": [
-            "Expose the local endpoint through a trusted HTTPS tunnel or hosted deployment.",
+            "Expose the local endpoint only through HTTPS plus authentication.",
             "In ChatGPT developer mode, create a custom MCP app using the HTTPS URL.",
             "Scan the app's tools, then test with a prompt like: List my open 2Do tasks.",
         ],
     },
     "claude-cowork": {
         "display_name": "Claude Cowork",
-        "public_url_label": "Claude custom connector URL",
+        "public_url_label": "Authenticated Claude custom connector URL",
         "docs_url": (
             "https://support.claude.com/en/articles/"
             "11175166-get-started-with-custom-connectors-using-remote-mcp"
         ),
         "next_steps": [
-            "Expose the local endpoint through a trusted HTTPS tunnel or hosted deployment.",
+            "Expose the local endpoint only through HTTPS plus authentication.",
             "In Claude, add a custom connector using the HTTPS URL.",
             "Test the connector with a prompt like: List my open 2Do tasks.",
         ],
@@ -385,8 +385,9 @@ def _connect(
 
             Important:
               ChatGPT and Claude Cowork cannot reach your plain localhost URL directly.
-              Use a trusted HTTPS tunnel or hosted deployment, and only share it if you
-              are comfortable exposing your local 2Do task data through that endpoint.
+              The HTTP transport does not add authentication by itself. Put it
+              behind HTTPS and authentication that restricts access to trusted
+              users only. Do not expose it publicly or rely on a secret URL.
 
             Next steps:
             """
