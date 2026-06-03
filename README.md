@@ -1,6 +1,6 @@
 # 2Do Tools
 
-A local, read-only MCP server and CLI for the 2Do macOS app.
+A local, read-only MCP server and CLI for the [2Do macOS app](https://www.2doapp.com/macos/).
 
 2Do Tools lets AI clients and terminal workflows query your local 2Do tasks,
 inspect lists and tags, open matching views in 2Do, and refresh a local backup
