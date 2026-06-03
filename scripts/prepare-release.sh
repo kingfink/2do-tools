@@ -36,6 +36,15 @@ remote="origin"
 release_branch=""
 push_branch=true
 create_pr=true
+release_metadata_files=(
+  .mcp.json
+  README.md
+  plugins/2do/.mcp.json
+  pyproject.toml
+  uv.lock
+  mcpb/manifest.json
+  mcpb/server.py
+)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -162,7 +171,7 @@ echo "Verifying release metadata..."
 python3 scripts/release_metadata.py verify "$tag"
 
 if [[ "$release_branch_was_prepared" == false ]] \
-  && git diff --quiet -- README.md pyproject.toml mcpb/manifest.json mcpb/server.py; then
+  && git diff --quiet -- "${release_metadata_files[@]}"; then
   echo "No version reference changes found for $tag." >&2
   exit 1
 fi
@@ -174,7 +183,7 @@ uv run --extra dev ruff format --check .
 python3 -m json.tool mcpb/manifest.json >/dev/null
 
 if [[ "$release_branch_was_prepared" == false ]]; then
-  git add README.md pyproject.toml mcpb/manifest.json mcpb/server.py
+  git add "${release_metadata_files[@]}"
   git commit -m "Bump version to $version"
 fi
 
