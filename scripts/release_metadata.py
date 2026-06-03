@@ -16,7 +16,9 @@ VERSION_TAG_RE = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 PYPROJECT_VERSION_RE = re.compile(r'version = "[0-9]+\.[0-9]+\.[0-9]+"')
 INSTALL_REF_RE = re.compile(r"@v[0-9]+\.[0-9]+\.[0-9]+")
 
-INSTALL_REF_FILES = ("README.md", "mcpb/manifest.json", "mcpb/server.py")
+INSTALL_REF_TEXT_FILES = ("README.md", "mcpb/server.py", ".mcp.json", "plugins/2do/.mcp.json")
+INSTALL_REF_JSON_FILES = ("mcpb/manifest.json",)
+INSTALL_REF_FILES = INSTALL_REF_TEXT_FILES + INSTALL_REF_JSON_FILES
 
 
 def repo_path(relative_path: str) -> Path:
@@ -47,8 +49,13 @@ def update_release_metadata(tag: str) -> None:
     version = release_version(tag)
 
     update_text("pyproject.toml", [(PYPROJECT_VERSION_RE, f'version = "{version}"')])
-    update_text("mcpb/server.py", [(INSTALL_REF_RE, f"@{tag}")])
     update_text("README.md", [(VERSION_TAG_RE, tag)])
+
+    for file_name in INSTALL_REF_TEXT_FILES:
+        if file_name == "README.md":
+            continue
+
+        update_text(file_name, [(INSTALL_REF_RE, f"@{tag}")])
 
     manifest_path = repo_path("mcpb/manifest.json")
     manifest = json.loads(manifest_path.read_text())
