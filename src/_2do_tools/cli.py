@@ -1,11 +1,19 @@
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import date, datetime
 from textwrap import dedent
 
-from . import server
+from . import render, server
 from .storage import backups_db_dir, backups_db_path
+
+LIST_COLUMN_MAX_WIDTH = 20
+TASK_COLUMN_MIN_WIDTH = 10
+# Budget the Task column against the widest fixed labels: the "Status" header
+# and a full ISO date in the Due column.
+_STATUS_COLUMN_WIDTH = len("Status")
+_DUE_COLUMN_WIDTH = len("0000-00-00")
+_COLUMN_SEPARATOR_WIDTH = len("  ") * 3
 
 REMOTE_CONNECTOR_DOCS = {
     "chatgpt": {
@@ -78,8 +86,26 @@ def _main(argv: list[str] | None, *, prog: str) -> int:
     task_list_parser.add_argument(
         "--has-due-date", action="store_true", help="Filter to tasks with any due date."
     )
+    due_window = task_list_parser.add_mutually_exclusive_group()
+    due_window.add_argument("--due-today", action="store_true", help="Filter to tasks due today.")
+    due_window.add_argument(
+        "--due-this-week",
+        action="store_true",
+        help="Filter to tasks due during the current calendar week.",
+    )
+    due_window.add_argument(
+        "--overdue", action="store_true", help="Filter to open tasks due before today."
+    )
+    recurrence = task_list_parser.add_mutually_exclusive_group()
+    recurrence.add_argument("--recurring", action="store_true", help="Filter to recurring tasks.")
+    recurrence.add_argument("--one-off", action="store_true", help="Filter to non-recurring tasks.")
     task_list_parser.add_argument("--query", help="Search task title, notes, list, and tags.")
     task_list_parser.add_argument("--limit", type=int, default=1000, help="Maximum tasks to print.")
+    task_list_parser.add_argument(
+        "--no-hyperlinks",
+        action="store_true",
+        help="Print plain task titles instead of clickable links.",
+    )
     task_open_parser = task_subparsers.add_parser("open", help="Open a 2Do task by UID.")
     task_open_parser.add_argument("uid")
 
@@ -137,7 +163,7 @@ def _main(argv: list[str] | None, *, prog: str) -> int:
 
     if args.command == "task":
         if args.task_command == "list":
-            return _list_tasks(args)
+            return _list_tasks(args, task_list_parser)
 
         if args.task_command == "open":
             return _open_task(args)
@@ -199,13 +225,14 @@ def _date_arg(value: str) -> date:
         raise argparse.ArgumentTypeError("expected YYYY-MM-DD") from exc
 
 
-def _list_tasks(args: argparse.Namespace) -> int:
+def _list_tasks(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     completed = None if args.all else args.completed
-    due_from, due_before = server._date_range_bounds(args.due_from, args.due_before)
+    due_from, due_before = _resolve_due_bounds(args, parser)
     completed_from, completed_before = server._date_range_bounds(
         args.completed_from,
         args.completed_before,
     )
+    recurring = True if args.recurring else False if args.one_off else None
 
     tasks = server._get_tasks(
         server.TaskFilters(
@@ -219,6 +246,7 @@ def _list_tasks(args: argparse.Namespace) -> int:
             has_due_date=args.has_due_date,
             completed_from=completed_from,
             completed_before=completed_before,
+            recurring=recurring,
             query=args.query,
             limit=args.limit,
         )
@@ -228,9 +256,35 @@ def _list_tasks(args: argparse.Namespace) -> int:
         _print_json(tasks)
         return 0
 
-    _print_task_table(tasks)
+    _print_task_table(tasks, hyperlinks=_hyperlinks_enabled(no_hyperlinks=args.no_hyperlinks))
 
     return 0
+
+
+def _resolve_due_bounds(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> tuple[datetime | None, datetime | None]:
+    uses_manual_due_filter = (
+        args.due_from is not None or args.due_before is not None or args.has_due_date
+    )
+    if (args.due_today or args.due_this_week or args.overdue) and uses_manual_due_filter:
+        parser.error(
+            "--due-today/--due-this-week/--overdue cannot be combined with "
+            "--due-from/--due-before/--has-due-date"
+        )
+
+    if args.due_today:
+        return server._today_window()
+    if args.due_this_week:
+        return server._calendar_week_window()
+    if args.overdue:
+        return server._overdue_window()
+    return server._date_range_bounds(args.due_from, args.due_before)
+
+
+def _hyperlinks_enabled(*, no_hyperlinks: bool) -> bool:
+    return not no_hyperlinks and sys.stdout.isatty()
 
 
 def _open_task(args: argparse.Namespace) -> int:
@@ -284,40 +338,33 @@ def _print_json(items: list[object]) -> None:
     print(json.dumps(payload, indent=2))
 
 
-def _print_task_table(tasks: list[server.Task]) -> None:
+def _print_task_table(tasks: list[server.Task], *, hyperlinks: bool) -> None:
     if not tasks:
         return
 
-    rows = [_task_table_row(task) for task in tasks]
-    for line in _format_table(["Status", "List", "Task", "Due"], rows):
+    list_width = min(
+        LIST_COLUMN_MAX_WIDTH,
+        max(len("List"), *(len(task.list.name) for task in tasks)),
+    )
+    fixed_width = _STATUS_COLUMN_WIDTH + list_width + _DUE_COLUMN_WIDTH + _COLUMN_SEPARATOR_WIDTH
+    task_width = max(render.terminal_width() - fixed_width, TASK_COLUMN_MIN_WIDTH)
+
+    rows = [_task_table_row(task, list_width, task_width) for task in tasks]
+    for line in render.render_table(["Status", "List", "Task", "Due"], rows, hyperlinks=hyperlinks):
         print(line)
 
 
-def _task_table_row(task: server.Task) -> list[str]:
+def _task_table_row(
+    task: server.Task,
+    list_width: int,
+    task_width: int,
+) -> list[render.Cell]:
     return [
-        "[x]" if task.completed else "[ ]",
-        task.list.name,
-        task.title,
-        task.date_due.date().isoformat() if task.date_due is not None else "",
+        render.Cell("[x]" if task.completed else "[ ]"),
+        render.Cell(render.truncate(task.list.name, list_width)),
+        render.Cell(render.truncate(task.title, task_width), url=task.url),
+        render.Cell(task.date_due.date().isoformat() if task.date_due is not None else ""),
     ]
-
-
-def _format_table(headers: list[str], rows: list[list[str]]) -> list[str]:
-    widths = [
-        max(len(row[column_index]) for row in [headers, *rows])
-        for column_index in range(len(headers))
-    ]
-
-    return [
-        _format_table_row(headers, widths),
-        _format_table_row(["-" * width for width in widths], widths),
-        *[_format_table_row(row, widths) for row in rows],
-    ]
-
-
-def _format_table_row(row: list[str], widths: list[int]) -> str:
-    padded_cells = [cell.ljust(width) for cell, width in zip(row, widths, strict=True)]
-    return "  ".join(padded_cells).rstrip()
 
 
 def _serve(transport: str, *, host: str = "127.0.0.1", port: int = 8765) -> int:

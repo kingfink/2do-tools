@@ -79,6 +79,8 @@ Open a new terminal after `uv tool update-shell`, then try:
 2do doctor
 2do task list
 2do task list --query invoice --list Projects
+2do task list --due-today
+2do task list --overdue --recurring
 2do task list --has-due-date --json
 2do task open task-uid
 2do list list

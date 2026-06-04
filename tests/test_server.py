@@ -300,6 +300,44 @@ def test_get_tasks_maps_recurring_task_schedule(fake_2do_db: Path) -> None:
     assert task.recurrence.raw_repeattype == 258
 
 
+def test_recurring_filter_returns_only_recurring_tasks(fake_2do_db: Path) -> None:
+    with sqlite3.connect(fake_2do_db) as connection:
+        _insert_task(
+            connection,
+            primid=4,
+            uid="task-recurring",
+            title="Recurring task",
+            repeatvalue=1,
+            repeattype=4,
+        )
+
+    recurring = server._get_tasks(server.TaskFilters(recurring=True))
+    assert [task.title for task in recurring] == ["Recurring task"]
+
+
+def test_one_off_filter_excludes_recurring_tasks(fake_2do_db: Path) -> None:
+    with sqlite3.connect(fake_2do_db) as connection:
+        _insert_task(
+            connection,
+            primid=4,
+            uid="task-recurring",
+            title="Recurring task",
+            repeatvalue=1,
+            repeattype=4,
+        )
+
+    titles = [task.title for task in server._get_tasks(server.TaskFilters(recurring=False))]
+    assert "Recurring task" not in titles
+    assert "Active task" in titles
+
+
+def test_overdue_window_ends_at_start_of_today() -> None:
+    due_from, due_before = server._overdue_window()
+
+    assert due_from is None
+    assert due_before == server._local_start_of_day(server._local_today())
+
+
 def test_due_date_filters_exclude_null_due_date_sentinel(fake_2do_db: Path) -> None:
     with sqlite3.connect(fake_2do_db) as connection:
         _insert_task(

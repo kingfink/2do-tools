@@ -148,6 +148,7 @@ class TaskFilters:
     has_due_date: bool = False
     completed_from: datetime | None = None
     completed_before: datetime | None = None
+    recurring: bool | None = None
     query: str | None = None
     limit: int = 1000
 
@@ -182,6 +183,10 @@ def _calendar_week_window() -> tuple[datetime, datetime]:
     today = _local_today()
     week_start = today - timedelta(days=today.weekday())
     return _local_start_of_day(week_start), _local_start_of_day(week_start + timedelta(days=7))
+
+
+def _overdue_window() -> tuple[None, datetime]:
+    return None, _local_start_of_day(_local_today())
 
 
 def _date_range_bounds(
@@ -350,6 +355,10 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
     if filters.due_before is not None:
         clauses.append("t.duedate < ?")
         params.append(_to_2do_timestamp(filters.due_before))
+
+    if filters.recurring is not None:
+        recurrence_test = "(coalesce(t.repeattype, 0) != 0 or coalesce(t.repeatvalue, 0) != 0)"
+        clauses.append(recurrence_test if filters.recurring else f"not {recurrence_test}")
 
     if _has_completed_date_filter(filters):
         clauses.append("t.completeddate is not null")
@@ -857,10 +866,11 @@ def list_tasks(
 @mcp.tool()
 def list_tasks_overdue(limit: int = 1000) -> list[Task]:
     """List open tasks due before today."""
+    _due_from, due_before = _overdue_window()
     return _get_tasks(
         TaskFilters(
             completed=False,
-            due_before=_local_start_of_day(_local_today()),
+            due_before=due_before,
             limit=limit,
         )
     )
