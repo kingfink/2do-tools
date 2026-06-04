@@ -3,6 +3,11 @@
 Pure presentation: OSC 8 hyperlinks, ellipsis truncation, and width-aware
 table alignment. Kept separate from ``cli`` so it can be unit tested without
 argument parsing or I/O.
+
+Boundary: this module is table-agnostic mechanism (it aligns to the widest
+cell and never prints). ``cli`` owns table-specific policy -- which columns
+exist, the column-width budget, link gating -- and pre-truncates cells before
+calling ``render_table``.
 """
 
 import shutil
