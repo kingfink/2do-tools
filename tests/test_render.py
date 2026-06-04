@@ -14,7 +14,7 @@ def test_truncate_leaves_short_text_unchanged() -> None:
 def test_truncate_adds_ellipsis_when_too_long() -> None:
     result = render.truncate("Buy a lot of milk", 10)
 
-    assert result == "Buy a lot…"
+    assert result == "Buy a l..."
     assert len(result) == 10
 
 

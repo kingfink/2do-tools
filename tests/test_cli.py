@@ -184,7 +184,7 @@ def test_task_table_truncates_long_titles_to_terminal_width(
 
     out = capsys.readouterr().out
     task_line = out.splitlines()[2]
-    assert "…" in task_line
+    assert "..." in task_line
     assert len(task_line) <= 40
     assert long_title not in out
 

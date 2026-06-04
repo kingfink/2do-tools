@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 _OSC8_START = "\x1b]8;;"
 _STRING_TERMINATOR = "\x1b\\"
-_ELLIPSIS = "…"
+_ELLIPSIS = "..."
 
 
 def terminal_width(default: int = 80) -> int:
@@ -24,9 +24,9 @@ def truncate(text: str, width: int) -> str:
         return ""
     if len(text) <= width:
         return text
-    if width == 1:
-        return _ELLIPSIS
-    return text[: width - 1] + _ELLIPSIS
+    if width <= len(_ELLIPSIS):
+        return _ELLIPSIS[:width]
+    return text[: width - len(_ELLIPSIS)] + _ELLIPSIS
 
 
 def hyperlink(text: str, url: str) -> str:
