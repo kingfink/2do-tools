@@ -101,6 +101,107 @@ def test_2do_task_applies_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
 
 
+def _capture_filters(monkeypatch: pytest.MonkeyPatch) -> list[server.TaskFilters]:
+    captured: list[server.TaskFilters] = []
+    monkeypatch.setattr(
+        cli.server,
+        "_get_tasks",
+        lambda filters: captured.append(filters) or [],
+    )
+    return captured
+
+
+def test_due_today_flag_uses_today_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _capture_filters(monkeypatch)
+
+    assert cli.main(["task", "list", "--due-today"]) == 0
+
+    due_from, due_before = server._today_window()
+    assert captured == [
+        server.TaskFilters(completed=False, due_from=due_from, due_before=due_before)
+    ]
+
+
+def test_due_this_week_flag_uses_week_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _capture_filters(monkeypatch)
+
+    assert cli.main(["task", "list", "--due-this-week"]) == 0
+
+    due_from, due_before = server._calendar_week_window()
+    assert captured == [
+        server.TaskFilters(completed=False, due_from=due_from, due_before=due_before)
+    ]
+
+
+def test_overdue_flag_uses_overdue_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _capture_filters(monkeypatch)
+
+    assert cli.main(["task", "list", "--overdue"]) == 0
+
+    _due_from, due_before = server._overdue_window()
+    assert captured == [server.TaskFilters(completed=False, due_before=due_before)]
+
+
+def test_recurring_flag_filters_recurring_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _capture_filters(monkeypatch)
+
+    assert cli.main(["task", "list", "--recurring"]) == 0
+
+    assert captured == [server.TaskFilters(completed=False, recurring=True)]
+
+
+def test_one_off_flag_filters_non_recurring_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _capture_filters(monkeypatch)
+
+    assert cli.main(["task", "list", "--one-off"]) == 0
+
+    assert captured == [server.TaskFilters(completed=False, recurring=False)]
+
+
+def test_due_window_flags_are_mutually_exclusive(monkeypatch: pytest.MonkeyPatch) -> None:
+    _capture_filters(monkeypatch)
+
+    with pytest.raises(SystemExit):
+        cli.main(["task", "list", "--due-today", "--due-from", "2024-01-01"])
+
+
+def test_recurring_and_one_off_are_mutually_exclusive(monkeypatch: pytest.MonkeyPatch) -> None:
+    _capture_filters(monkeypatch)
+
+    with pytest.raises(SystemExit):
+        cli.main(["task", "list", "--recurring", "--one-off"])
+
+
+def test_task_table_truncates_long_titles_to_terminal_width(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    long_title = "Email the accountant about the overdue invoice and the receipts"
+    monkeypatch.setattr(cli.server, "_get_tasks", lambda filters: [_task(title=long_title)])
+    monkeypatch.setattr(cli.render, "terminal_width", lambda: 40)
+
+    assert cli.main(["task", "list"]) == 0
+
+    out = capsys.readouterr().out
+    task_line = out.splitlines()[2]
+    assert "…" in task_line
+    assert len(task_line) <= 40
+    assert long_title not in out
+
+
+def test_hyperlinks_disabled_when_not_a_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: False, raising=False)
+
+    assert cli._hyperlinks_enabled(no_hyperlinks=False) is False
+
+
+def test_hyperlinks_enabled_on_a_tty_unless_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True, raising=False)
+
+    assert cli._hyperlinks_enabled(no_hyperlinks=False) is True
+    assert cli._hyperlinks_enabled(no_hyperlinks=True) is False
+
+
 def test_2do_task_prints_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
