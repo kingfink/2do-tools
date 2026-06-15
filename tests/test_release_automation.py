@@ -257,13 +257,38 @@ def test_existing_release_requires_resolvable_local_tag(tmp_path: Path) -> None:
 
 def test_readme_explains_stable_updates_and_existing_install_migration() -> None:
     readme = (REPO_ROOT / "README.md").read_text()
+    stable_git_ref = "git+https://github.com/kingfink/2do-tools@stable"
+    uvx_prefix = f"uvx --refresh-package 2do-tools --from {stable_git_ref}"
+    uvx_lines = [
+        line
+        for line in readme.splitlines()
+        if "uvx" in line and "git+https://github.com/kingfink/2do-tools" in line
+    ]
 
-    assert "git+https://github.com/kingfink/2do-tools@stable" in readme
+    assert stable_git_ref in readme
     assert "--refresh-package 2do-tools" in readme
-    assert 'uv tool install "git+https://github.com/kingfink/2do-tools@stable"' in readme
+    assert f'uv tool install "{stable_git_ref}"' in readme
     assert "uv tool upgrade 2do-tools" in readme
     assert "Existing installations pinned to a version tag do not switch automatically." in readme
     assert "fully quit and reopen" in readme
+    assert "claude plugin marketplace update 2do-tools" in readme
+    assert "claude plugin uninstall 2do@2do-tools" in readme
+    assert "claude plugin install 2do@2do-tools" in readme
+    assert "claude plugin update 2do" not in readme
+    assert "git+https://github.com/kingfink/2do-tools@v0.8.0" not in readme
+    assert uvx_lines
+    assert all(uvx_prefix in line for line in uvx_lines)
+    assert (
+        f"""        "--refresh-package",
+        "2do-tools",
+        "--from",
+        "{stable_git_ref}",
+        "2do",
+        "mcp",
+        "serve"
+"""
+        in readme
+    )
 
 
 def test_product_metadata_describes_reading_creating_and_completing_tasks() -> None:

@@ -62,7 +62,17 @@ uvx --refresh-package 2do-tools --from git+https://github.com/kingfink/2do-tools
 Existing installations pinned to a version tag do not switch automatically.
 Migrate each existing install once:
 
-- Claude Code plugin: run `claude plugin update 2do`, then restart Claude Code.
+- Claude Code plugin: refresh the marketplace entry, reinstall the plugin, then
+  restart Claude Code:
+
+  ```bash
+  claude plugin marketplace update 2do-tools
+  claude plugin uninstall 2do@2do-tools
+  claude plugin install 2do@2do-tools
+  ```
+
+  The reinstalled plugin ships the stable MCP config, so future server updates
+  resolve through `stable` without another plugin version update.
 - Codex: remove and re-add the server with `stable`, then fully quit and reopen
   Codex:
 
