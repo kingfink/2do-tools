@@ -255,6 +255,17 @@ def test_existing_release_requires_resolvable_local_tag(tmp_path: Path) -> None:
     assert not any(command.startswith("git push") for command in commands)
 
 
+def test_readme_explains_stable_updates_and_existing_install_migration() -> None:
+    readme = (REPO_ROOT / "README.md").read_text()
+
+    assert "git+https://github.com/kingfink/2do-tools@stable" in readme
+    assert "--refresh-package 2do-tools" in readme
+    assert 'uv tool install "git+https://github.com/kingfink/2do-tools@stable"' in readme
+    assert "uv tool upgrade 2do-tools" in readme
+    assert "Existing installations pinned to a version tag do not switch automatically." in readme
+    assert "fully quit and reopen" in readme
+
+
 def test_product_metadata_describes_reading_creating_and_completing_tasks() -> None:
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     mcpb_manifest = json.loads((REPO_ROOT / "mcpb" / "manifest.json").read_text())
