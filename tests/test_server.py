@@ -1,11 +1,24 @@
+import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from fastmcp.server.elicitation import (
+    AcceptedElicitation,
+    CancelledElicitation,
+    DeclinedElicitation,
+)
 
 import _2do_tools.server as server
+from _2do_tools.task_creation import (
+    ConfirmationResult,
+    ConfirmationStatus,
+    TaskCreationResult,
+    TaskCreationStatus,
+)
 
 CREATED_AT = datetime(2024, 1, 2, 12, 0, tzinfo=UTC).timestamp()
 DUE_AT = datetime(2024, 1, 4, 9, 0, tzinfo=UTC).timestamp()
@@ -505,3 +518,277 @@ def test_open_search_opens_search_url(monkeypatch: pytest.MonkeyPatch) -> None:
     assert opened_urls == ["twodo://x-callback-url/search?text=invoice%2C%20admin"]
     assert result.url == "twodo://x-callback-url/search?text=invoice%2C%20admin"
     assert result.opened is True
+
+
+def test_require_list_name_matches_case_insensitively(fake_2do_db: Path) -> None:
+    assert server._require_list_name("inbox") == "Inbox"
+
+
+def test_require_list_name_rejects_unknown_list(fake_2do_db: Path) -> None:
+    with pytest.raises(ValueError, match="2Do list not found: Missing"):
+        server._require_list_name("Missing")
+
+
+def test_require_list_name_propagates_list_lookup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        server,
+        "_get_lists",
+        lambda: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        server._require_list_name("Inbox")
+
+
+def test_task_draft_resolves_list_and_normalizes_fields(fake_2do_db: Path) -> None:
+    draft = server._task_draft(
+        title=" Buy milk ",
+        notes=None,
+        list_name="inbox",
+        due_date=None,
+        tags=[" Home "],
+        repeat=None,
+    )
+
+    assert draft.title == "Buy milk"
+    assert draft.list_name == "Inbox"
+    assert draft.tags == ["Home"]
+
+
+def test_open_task_quick_entry_opens_prefilled_add_url(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened_urls: list[str] = []
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
+
+    result = server.open_task_quick_entry(
+        title="Buy milk",
+        notes="Whole milk",
+        list_name="inbox",
+        tags=["Home"],
+        repeat=None,
+    )
+
+    assert opened_urls == [
+        "twodo://x-callback-url/add?"
+        "task=Buy%20milk"
+        "&note=Whole%20milk"
+        "&forlist=Inbox"
+        "&tags=Home"
+        "&ignoredefaults=1"
+        "&usequickentry=1"
+    ]
+    assert result.url == opened_urls[0]
+    assert result.opened is True
+
+
+class _FakeContext:
+    def __init__(
+        self,
+        *,
+        elicitation: object | None,
+        response: object | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.session = SimpleNamespace(
+            client_params=SimpleNamespace(
+                capabilities=SimpleNamespace(elicitation=elicitation),
+            )
+        )
+        self.response = response
+        self.error = error
+        self.calls: list[tuple[str, type[bool], str | None]] = []
+
+    async def elicit(
+        self,
+        message: str,
+        response_type: type[bool],
+        *,
+        response_title: str | None = None,
+    ) -> object:
+        self.calls.append((message, response_type, response_title))
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+def _form_elicitation() -> SimpleNamespace:
+    return SimpleNamespace(form=SimpleNamespace())
+
+
+def _created_result() -> TaskCreationResult:
+    return TaskCreationResult(
+        status=TaskCreationStatus.CREATED,
+        uid="task-123",
+        task_url="twodo://x-callback-url/showtask?uid=task-123",
+        message="Created task.",
+    )
+
+
+def test_create_task_uses_form_elicitation_when_supported(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _FakeContext(
+        elicitation=_form_elicitation(),
+        response=AcceptedElicitation(data=True),
+    )
+    created_drafts = []
+    monkeypatch.setattr(
+        server,
+        "create_task_direct",
+        lambda draft: created_drafts.append(draft) or _created_result(),
+    )
+    monkeypatch.setattr(
+        server,
+        "confirm_task_native",
+        lambda _draft: pytest.fail("native confirmation should not be used"),
+    )
+
+    result = asyncio.run(
+        server.create_task(
+            title="Buy milk",
+            list_name="inbox",
+            tags=["Home"],
+            ctx=context,
+        )
+    )
+
+    assert result.status is TaskCreationStatus.CREATED
+    assert [draft.list_name for draft in created_drafts] == ["Inbox"]
+    assert context.calls == [
+        (
+            "Title: Buy milk\nList: Inbox\nTags: Home",
+            bool,
+            "Create this task?",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        AcceptedElicitation(data=False),
+        DeclinedElicitation(),
+        CancelledElicitation(),
+    ],
+)
+def test_create_task_stops_when_elicitation_is_not_accepted(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    response: object,
+) -> None:
+    context = _FakeContext(elicitation=_form_elicitation(), response=response)
+    monkeypatch.setattr(
+        server,
+        "create_task_direct",
+        lambda _draft: pytest.fail("task should not be created"),
+    )
+    monkeypatch.setattr(
+        server,
+        "confirm_task_native",
+        lambda _draft: pytest.fail("native confirmation should not be used"),
+    )
+
+    result = asyncio.run(server.create_task(title="Buy milk", ctx=context))
+
+    assert result.status is TaskCreationStatus.CANCELLED
+
+
+def test_create_task_fails_closed_when_elicitation_errors(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _FakeContext(
+        elicitation=_form_elicitation(),
+        error=RuntimeError("client disconnected"),
+    )
+    monkeypatch.setattr(
+        server,
+        "create_task_direct",
+        lambda _draft: pytest.fail("task should not be created"),
+    )
+    monkeypatch.setattr(
+        server,
+        "confirm_task_native",
+        lambda _draft: pytest.fail("native fallback should not be used"),
+    )
+
+    result = asyncio.run(server.create_task(title="Buy milk", ctx=context))
+
+    assert result.status is TaskCreationStatus.FAILED
+    assert result.message == "Could not confirm task creation: client disconnected"
+
+
+def test_create_task_uses_native_confirmation_without_elicitation(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _FakeContext(elicitation=None)
+    monkeypatch.setattr(
+        server,
+        "confirm_task_native",
+        lambda _draft: ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task creation confirmed.",
+        ),
+    )
+    monkeypatch.setattr(server, "create_task_direct", lambda _draft: _created_result())
+
+    result = asyncio.run(server.create_task(title="Buy milk", ctx=context))
+
+    assert result.status is TaskCreationStatus.CREATED
+    assert context.calls == []
+
+
+@pytest.mark.parametrize(
+    ("confirmation", "expected_status"),
+    [
+        (
+            ConfirmationResult(
+                status=ConfirmationStatus.CANCELLED,
+                message="Task creation cancelled.",
+            ),
+            TaskCreationStatus.CANCELLED,
+        ),
+        (
+            ConfirmationResult(
+                status=ConfirmationStatus.FAILED,
+                message="Could not display confirmation.",
+            ),
+            TaskCreationStatus.FAILED,
+        ),
+    ],
+)
+def test_create_task_stops_when_native_confirmation_does_not_confirm(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    confirmation: ConfirmationResult,
+    expected_status: TaskCreationStatus,
+) -> None:
+    context = _FakeContext(elicitation=None)
+    monkeypatch.setattr(server, "confirm_task_native", lambda _draft: confirmation)
+    monkeypatch.setattr(
+        server,
+        "create_task_direct",
+        lambda _draft: pytest.fail("task should not be created"),
+    )
+
+    result = asyncio.run(server.create_task(title="Buy milk", ctx=context))
+
+    assert result.status is expected_status
+    assert result.message == confirmation.message
+
+
+def test_create_task_tool_annotations_describe_mutation() -> None:
+    tool = asyncio.run(server.mcp.get_tool("create_task"))
+
+    assert tool is not None
+    assert tool.annotations is not None
+    assert tool.annotations.readOnlyHint is False
+    assert tool.annotations.destructiveHint is False
+    assert tool.annotations.idempotentHint is False
+    assert tool.annotations.openWorldHint is True

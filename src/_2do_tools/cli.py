@@ -6,6 +6,12 @@ from textwrap import dedent
 
 from . import render, server
 from .storage import backups_db_dir, backups_db_path
+from .task_creation import (
+    RepeatPreset,
+    TaskCreationStatus,
+    create_task_direct,
+    task_preview,
+)
 
 LIST_COLUMN_MAX_WIDTH = 20
 TASK_COLUMN_MIN_WIDTH = 10
@@ -108,6 +114,16 @@ def _main(argv: list[str] | None, *, prog: str) -> int:
     )
     task_open_parser = task_subparsers.add_parser("open", help="Open a 2Do task by UID.")
     task_open_parser.add_argument("uid")
+    task_quick_entry_parser = task_subparsers.add_parser(
+        "quick-entry",
+        help="Open a pre-filled Quick Entry editor in 2Do.",
+    )
+    _add_task_creation_arguments(task_quick_entry_parser)
+    task_create_parser = task_subparsers.add_parser(
+        "create",
+        help="Create a 2Do task after terminal confirmation.",
+    )
+    _add_task_creation_arguments(task_create_parser)
 
     list_parser = subparsers.add_parser("list", help="Work with 2Do lists.")
     list_subparsers = list_parser.add_subparsers(dest="list_command")
@@ -168,6 +184,12 @@ def _main(argv: list[str] | None, *, prog: str) -> int:
         if args.task_command == "open":
             return _open_task(args)
 
+        if args.task_command == "quick-entry":
+            return _open_task_quick_entry(args)
+
+        if args.task_command == "create":
+            return _create_task(args)
+
         task_parser.print_help()
         return 0
 
@@ -223,6 +245,29 @@ def _date_arg(value: str) -> date:
         return date.fromisoformat(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError("expected YYYY-MM-DD") from exc
+
+
+def _add_task_creation_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("title")
+    parser.add_argument("--notes")
+    parser.add_argument("--list", dest="list_name", default="Inbox")
+    parser.add_argument("--due", dest="due_date", type=_date_arg)
+    parser.add_argument("--tag", dest="tags", action="append")
+    parser.add_argument(
+        "--repeat",
+        choices=[preset.value for preset in RepeatPreset],
+    )
+
+
+def _task_creation_kwargs(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "title": args.title,
+        "notes": args.notes,
+        "list_name": args.list_name,
+        "due_date": args.due_date,
+        "tags": args.tags,
+        "repeat": RepeatPreset(args.repeat) if args.repeat is not None else None,
+    }
 
 
 def _list_tasks(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -291,6 +336,41 @@ def _open_task(args: argparse.Namespace) -> int:
     result = server.open_task(args.uid)
     print(result.url)
     return 0
+
+
+def _open_task_quick_entry(args: argparse.Namespace) -> int:
+    result = server.open_task_quick_entry(**_task_creation_kwargs(args))
+    print(result.url)
+    return 0
+
+
+def _create_task(args: argparse.Namespace) -> int:
+    draft = server._task_draft(**_task_creation_kwargs(args))
+    print(task_preview(draft))
+
+    if not sys.stdin.isatty():
+        print("Task creation cancelled.")
+        return 0
+
+    try:
+        answer = input("Create this task? [y/N] ")
+    except EOFError:
+        answer = ""
+
+    if answer.strip().casefold() not in {"y", "yes"}:
+        print("Task creation cancelled.")
+        return 0
+
+    result = create_task_direct(draft)
+    if result.status is TaskCreationStatus.CREATED:
+        print(f"Created task {result.uid} - {result.task_url}")
+        return 0
+    if result.status is TaskCreationStatus.CANCELLED:
+        print(result.message)
+        return 0
+
+    print(result.message, file=sys.stderr)
+    return 1
 
 
 def _list_lists(args: argparse.Namespace) -> int:

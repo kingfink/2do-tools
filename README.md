@@ -1,14 +1,16 @@
 # 2Do Tools
 
-A local, read-only MCP server and CLI for the [2Do macOS app](https://www.2doapp.com/macos/).
+A local MCP server and CLI for reading and creating tasks in the
+[2Do macOS app](https://www.2doapp.com/macos/).
 
 2Do Tools lets AI clients and terminal workflows query your local 2Do tasks,
-inspect lists and tags, open matching views in 2Do, and refresh a local backup
-of the 2Do database. It is macOS-only.
+inspect lists and tags, open matching views in 2Do, create tasks safely, and
+refresh a local backup of the 2Do database. It is macOS-only.
 
 The server reads from its own backup under
-`~/Library/Application Support/2do-tools/backups/` and does not write to the
-original 2Do database.
+`~/Library/Application Support/2do-tools/backups/`. Database access remains read-only.
+Task creation is delegated to 2Do through its documented URL scheme, rather
+than writing to the original 2Do database.
 
 This project is experimental, provided as-is, and independent from 2Do and its
 developer. It uses the 2Do name only to describe compatibility.
@@ -83,6 +85,8 @@ Open a new terminal after `uv tool update-shell`, then try:
 2do task list --overdue --recurring
 2do task list --has-due-date --json
 2do task open task-uid
+2do task quick-entry "Buy milk" --list Inbox --tag Home
+2do task create "Submit report" --due 2026-06-20 --repeat weekly
 2do list list
 2do tag list
 2do search open invoice
@@ -98,7 +102,15 @@ Run `2do task list --help` for all filters.
   week, completed today, and completed this week.
 - List 2Do lists and tags.
 - Open tasks, lists, and searches in 2Do using `twodo://` URL schemes.
+- Open a pre-filled Quick Entry editor for review and saving in 2Do.
+- Create tasks directly after explicit confirmation. MCP uses client
+  elicitation when available and otherwise confirms on the host Mac; the CLI
+  uses a terminal prompt.
 - Refresh the local read-only database backup.
+
+Task creation supports a required title plus optional notes, list, due date,
+tags, and daily, weekly, biweekly, or monthly repeat presets. Repeating tasks
+require a due date.
 
 Codex and Claude plugin installs also include skills for daily review, task
 lookup, and setup diagnostics. Connector-only installs, such as ChatGPT custom
@@ -114,7 +126,8 @@ private tasks, credentials, or tunnel URLs.
 The `open_*` tools launch `twodo://` URLs on the Mac running the MCP server. If
 you expose the server through a remote connector, remote clients that can call
 those tools can also bring 2Do to the front or open task/list/search views on
-that Mac.
+that Mac. Quick Entry opens an editor on that Mac. Direct creation always
+requires either MCP elicitation or a native confirmation dialog on that Mac.
 
 ## Remote Connectors
 

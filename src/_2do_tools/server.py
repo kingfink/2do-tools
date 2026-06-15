@@ -1,3 +1,4 @@
+import asyncio
 import json
 import plistlib
 import secrets
@@ -7,18 +8,32 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
+from fastmcp.server.elicitation import AcceptedElicitation
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from .storage import backups_db_dir, backups_db_path
-from .url_schemes import open_url, search_url, show_list_url, show_task_url
+from .task_creation import (
+    ConfirmationStatus,
+    RepeatPreset,
+    TaskCreationResult,
+    TaskCreationStatus,
+    TaskDraft,
+    confirm_task_native,
+    create_task_direct,
+    task_preview,
+)
+from .url_schemes import add_task_url, open_url, search_url, show_list_url, show_task_url
 
 MCP_INSTRUCTIONS = (
-    "2Do Tools is read-only access to the local 2Do macOS task database. "
+    "2Do Tools reads from a local, read-only backup of the 2Do macOS task database. "
     "Use list_tasks for filtered lookup and the list_tasks_* shortcuts for common date groups. "
     "Use exact local dates for relative date requests. Task and list results include twodo:// "
     "URLs. open_task/open_list/open_search only open views on the Mac running the server; use "
-    "them when the user asks to open something. Run refresh_backup_db if results look stale."
+    "them when the user asks to open something. open_task_quick_entry opens a pre-filled editor "
+    "that the user must save in 2Do. create_task creates directly only after MCP elicitation or "
+    "native confirmation on the host Mac. Run refresh_backup_db if results look stale."
 )
 
 mcp = FastMCP("2Do", instructions=MCP_INSTRUCTIONS)
@@ -454,6 +469,35 @@ def _resolve_list_name(name: str) -> str:
             return task_list.name
 
     return name
+
+
+def _require_list_name(name: str) -> str:
+    requested_name = name.casefold()
+
+    for task_list in _get_lists():
+        if task_list.name.casefold() == requested_name:
+            return task_list.name
+
+    raise ValueError(f"2Do list not found: {name}")
+
+
+def _task_draft(
+    title: str,
+    notes: str | None,
+    list_name: str,
+    due_date: date | None,
+    tags: list[str] | None,
+    repeat: RepeatPreset | None,
+) -> TaskDraft:
+    draft = TaskDraft(
+        title=title,
+        notes=notes,
+        list_name=list_name,
+        due_date=due_date,
+        tags=tags,
+        repeat=repeat,
+    )
+    return draft.model_copy(update={"list_name": _require_list_name(draft.list_name)})
 
 
 def _get_tags() -> list[Tag]:
@@ -960,6 +1004,93 @@ def open_search(text: str) -> OpenedUrl:
     url = search_url(text)
     open_url(url)
     return OpenedUrl(url=url, opened=True)
+
+
+@mcp.tool()
+def open_task_quick_entry(
+    title: str,
+    notes: str | None = None,
+    list_name: str = "Inbox",
+    due_date: date | None = None,
+    tags: list[str] | None = None,
+    repeat: RepeatPreset | None = None,
+) -> OpenedUrl:
+    """Open a pre-filled Quick Entry editor in 2Do without saving the task."""
+    draft = _task_draft(title, notes, list_name, due_date, tags, repeat)
+    url = add_task_url(
+        title=draft.title,
+        notes=draft.notes,
+        list_name=draft.list_name,
+        due_date=draft.due_date,
+        tags=draft.tags,
+        repeat=draft.repeat.url_value if draft.repeat is not None else None,
+        use_quick_entry=True,
+    )
+    open_url(url)
+    return OpenedUrl(url=url, opened=True)
+
+
+def _supports_form_elicitation(ctx: Context) -> bool:
+    client_params = ctx.session.client_params
+    if client_params is None:
+        return False
+
+    elicitation = client_params.capabilities.elicitation
+    return elicitation is not None and elicitation.form is not None
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+async def create_task(
+    ctx: Context,
+    title: str,
+    notes: str | None = None,
+    list_name: str = "Inbox",
+    due_date: date | None = None,
+    tags: list[str] | None = None,
+    repeat: RepeatPreset | None = None,
+) -> TaskCreationResult:
+    """Create a 2Do task after explicit user confirmation."""
+    draft = _task_draft(title, notes, list_name, due_date, tags, repeat)
+
+    if _supports_form_elicitation(ctx):
+        try:
+            response = await ctx.elicit(
+                task_preview(draft),
+                bool,
+                response_title="Create this task?",
+            )
+        except Exception as exc:
+            return TaskCreationResult(
+                status=TaskCreationStatus.FAILED,
+                message=f"Could not confirm task creation: {exc}",
+            )
+
+        if not isinstance(response, AcceptedElicitation) or response.data is not True:
+            return TaskCreationResult(
+                status=TaskCreationStatus.CANCELLED,
+                message="Task creation cancelled.",
+            )
+    else:
+        confirmation = await asyncio.to_thread(confirm_task_native, draft)
+        if confirmation.status is ConfirmationStatus.CANCELLED:
+            return TaskCreationResult(
+                status=TaskCreationStatus.CANCELLED,
+                message=confirmation.message,
+            )
+        if confirmation.status is ConfirmationStatus.FAILED:
+            return TaskCreationResult(
+                status=TaskCreationStatus.FAILED,
+                message=confirmation.message,
+            )
+
+    return await asyncio.to_thread(create_task_direct, draft)
 
 
 @mcp.tool()

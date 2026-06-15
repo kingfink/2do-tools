@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "2do-tools"
 version = "0.7.0"
-description = "MCP server for reading tasks from 2Do on macOS"
+description = "MCP server and CLI to read and create tasks in 2Do on macOS"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
