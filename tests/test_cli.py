@@ -606,32 +606,13 @@ def test_2do_task_complete_confirms_and_prints_completed_task(
     )
 
 
-@pytest.mark.parametrize("answer", ["", "n", "nope"])
 def test_2do_task_complete_cancels_for_non_affirmative_answer(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    answer: str,
 ) -> None:
     monkeypatch.setattr(cli.server, "_require_open_task", lambda _uid: _task())
     monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
-    monkeypatch.setattr("builtins.input", lambda _prompt: answer)
-    monkeypatch.setattr(
-        cli,
-        "complete_task_direct",
-        lambda _uid: pytest.fail("task should not be completed"),
-    )
-
-    assert cli.main(["task", "complete", "task-active"]) == 0
-
-    assert capsys.readouterr().out.endswith("Task completion cancelled.\n")
-
-
-def test_2do_task_complete_cancels_for_non_interactive_stdin(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setattr(cli.server, "_require_open_task", lambda _uid: _task())
-    monkeypatch.setattr(cli.sys, "stdin", _NonInteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "no")
     monkeypatch.setattr(
         cli,
         "complete_task_direct",

@@ -727,26 +727,12 @@ def _created_result() -> TaskCreationResult:
     )
 
 
-def test_create_task_uses_form_elicitation_when_supported(
-    fake_2do_db: Path,
+def test_confirm_uses_form_elicitation_when_supported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     context = _FakeContext(
         elicitation=_form_elicitation(),
         response=AcceptedElicitation(data=True),
-    )
-    created_drafts = []
-    threaded_functions = []
-
-    async def to_thread(function, /, *args, **kwargs):
-        threaded_functions.append(function)
-        return function(*args, **kwargs)
-
-    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
-    monkeypatch.setattr(
-        server,
-        "create_task_direct",
-        lambda draft: created_drafts.append(draft) or _created_result(),
     )
     monkeypatch.setattr(
         server,
@@ -755,20 +741,22 @@ def test_create_task_uses_form_elicitation_when_supported(
     )
 
     result = asyncio.run(
-        server.create_task(
-            title="Buy milk",
-            list_name="inbox",
-            tags=["Home"],
-            ctx=context,
+        server._confirm(
+            context,
+            "Title: Buy milk\nList: Inbox",
+            response_title="Create this task?",
+            action="Create",
+            operation="creation",
         )
     )
 
-    assert result.status is TaskCreationStatus.CREATED
-    assert [draft.list_name for draft in created_drafts] == ["Inbox"]
-    assert threaded_functions == [server._task_draft, server.create_task_direct]
+    assert result == ConfirmationResult(
+        status=ConfirmationStatus.CONFIRMED,
+        message="Task creation confirmed.",
+    )
     assert context.calls == [
         (
-            "Title: Buy milk\nList: Inbox\nTags: Home",
+            "Title: Buy milk\nList: Inbox",
             bool,
             "Create this task?",
         )
@@ -783,30 +771,34 @@ def test_create_task_uses_form_elicitation_when_supported(
         CancelledElicitation(),
     ],
 )
-def test_create_task_stops_when_elicitation_is_not_accepted(
-    fake_2do_db: Path,
+def test_confirm_cancels_when_elicitation_is_not_accepted(
     monkeypatch: pytest.MonkeyPatch,
     response: object,
 ) -> None:
     context = _FakeContext(elicitation=_form_elicitation(), response=response)
     monkeypatch.setattr(
         server,
-        "create_task_direct",
-        lambda _draft: pytest.fail("task should not be created"),
-    )
-    monkeypatch.setattr(
-        server,
         "confirm_action_native",
         lambda _preview, **_kwargs: pytest.fail("native confirmation should not be used"),
     )
 
-    result = asyncio.run(server.create_task(title="Buy milk", ctx=context))
+    result = asyncio.run(
+        server._confirm(
+            context,
+            "Title: Buy milk\nList: Inbox",
+            response_title="Create this task?",
+            action="Create",
+            operation="creation",
+        )
+    )
 
-    assert result.status is TaskCreationStatus.CANCELLED
+    assert result == ConfirmationResult(
+        status=ConfirmationStatus.CANCELLED,
+        message="Task creation cancelled.",
+    )
 
 
-def test_create_task_fails_closed_when_elicitation_errors(
-    fake_2do_db: Path,
+def test_confirm_fails_closed_when_elicitation_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     context = _FakeContext(
@@ -815,83 +807,151 @@ def test_create_task_fails_closed_when_elicitation_errors(
     )
     monkeypatch.setattr(
         server,
-        "create_task_direct",
-        lambda _draft: pytest.fail("task should not be created"),
-    )
-    monkeypatch.setattr(
-        server,
         "confirm_action_native",
         lambda _preview, **_kwargs: pytest.fail("native fallback should not be used"),
     )
 
-    result = asyncio.run(server.create_task(title="Buy milk", ctx=context))
+    result = asyncio.run(
+        server._confirm(
+            context,
+            "Title: Buy milk\nList: Inbox",
+            response_title="Create this task?",
+            action="Create",
+            operation="creation",
+        )
+    )
 
-    assert result.status is TaskCreationStatus.FAILED
-    assert result.message == "Could not confirm task creation: client disconnected"
+    assert result == ConfirmationResult(
+        status=ConfirmationStatus.FAILED,
+        message="Could not confirm task creation: client disconnected",
+    )
 
 
-def test_create_task_uses_native_confirmation_without_elicitation(
+def test_confirm_uses_native_confirmation_without_elicitation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _FakeContext(elicitation=None)
+    native_calls: list[tuple[str, dict[str, object]]] = []
+    threaded_functions = []
+
+    def confirm_action_native(preview: str, **kwargs: object) -> ConfirmationResult:
+        native_calls.append((preview, kwargs))
+        return ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task creation confirmed.",
+        )
+
+    async def to_thread(function, /, *args, **kwargs):
+        threaded_functions.append(function)
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(server, "confirm_action_native", confirm_action_native)
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
+
+    result = asyncio.run(
+        server._confirm(
+            context,
+            "Title: Buy milk\nList: Inbox",
+            response_title="Create this task?",
+            action="Create",
+            operation="creation",
+        )
+    )
+
+    assert result.status is ConfirmationStatus.CONFIRMED
+    assert context.calls == []
+    assert threaded_functions == [server.confirm_action_native]
+    assert native_calls == [
+        (
+            "Title: Buy milk\nList: Inbox",
+            {"action": "Create", "operation": "creation"},
+        )
+    ]
+
+
+def test_create_task_confirms_then_creates_in_threads(
     fake_2do_db: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     context = _FakeContext(elicitation=None)
-    monkeypatch.setattr(
-        server,
-        "confirm_action_native",
-        lambda _preview, **_kwargs: ConfirmationResult(
+    created_drafts = []
+    confirmation_calls = []
+    threaded_functions = []
+
+    async def confirm(ctx, preview, **kwargs):
+        confirmation_calls.append((ctx, preview, kwargs))
+        return ConfirmationResult(
             status=ConfirmationStatus.CONFIRMED,
             message="Task creation confirmed.",
-        ),
-    )
-    monkeypatch.setattr(server, "create_task_direct", lambda _draft: _created_result())
+        )
 
-    result = asyncio.run(server.create_task(title="Buy milk", ctx=context))
+    async def to_thread(function, /, *args, **kwargs):
+        threaded_functions.append(function)
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(
+        server,
+        "create_task_direct",
+        lambda draft: created_drafts.append(draft) or _created_result(),
+    )
+
+    result = asyncio.run(
+        server.create_task(
+            title="Buy milk",
+            list_name="inbox",
+            tags=["Home"],
+            ctx=context,
+        )
+    )
 
     assert result.status is TaskCreationStatus.CREATED
-    assert context.calls == []
+    assert [draft.list_name for draft in created_drafts] == ["Inbox"]
+    assert threaded_functions == [server._task_draft, server.create_task_direct]
+    assert confirmation_calls == [
+        (
+            context,
+            "Title: Buy milk\nList: Inbox\nTags: Home",
+            {
+                "response_title": "Create this task?",
+                "action": "Create",
+                "operation": "creation",
+            },
+        )
+    ]
 
 
 @pytest.mark.parametrize(
-    ("confirmation", "expected_status"),
+    ("confirmation_status", "expected_status"),
     [
-        (
-            ConfirmationResult(
-                status=ConfirmationStatus.CANCELLED,
-                message="Task creation cancelled.",
-            ),
-            TaskCreationStatus.CANCELLED,
-        ),
-        (
-            ConfirmationResult(
-                status=ConfirmationStatus.FAILED,
-                message="Could not display confirmation.",
-            ),
-            TaskCreationStatus.FAILED,
-        ),
+        (ConfirmationStatus.CANCELLED, TaskCreationStatus.CANCELLED),
+        (ConfirmationStatus.FAILED, TaskCreationStatus.FAILED),
     ],
 )
-def test_create_task_stops_when_native_confirmation_does_not_confirm(
+def test_create_task_maps_unconfirmed_result(
     fake_2do_db: Path,
     monkeypatch: pytest.MonkeyPatch,
-    confirmation: ConfirmationResult,
+    confirmation_status: ConfirmationStatus,
     expected_status: TaskCreationStatus,
 ) -> None:
-    context = _FakeContext(elicitation=None)
-    monkeypatch.setattr(
-        server,
-        "confirm_action_native",
-        lambda _preview, **_kwargs: confirmation,
-    )
+    async def confirm(*_args, **_kwargs):
+        return ConfirmationResult(
+            status=confirmation_status,
+            message="Confirmation stopped.",
+        )
+
+    monkeypatch.setattr(server, "_confirm", confirm)
     monkeypatch.setattr(
         server,
         "create_task_direct",
         lambda _draft: pytest.fail("task should not be created"),
     )
 
-    result = asyncio.run(server.create_task(title="Buy milk", ctx=context))
+    result = asyncio.run(server.create_task(title="Buy milk", ctx=_FakeContext(elicitation=None)))
 
     assert result.status is expected_status
-    assert result.message == confirmation.message
+    assert result.message == "Confirmation stopped."
 
 
 def test_create_task_tool_annotations_describe_mutation() -> None:
@@ -914,31 +974,32 @@ def _completed_result() -> TaskCompletionResult:
     )
 
 
-def test_complete_task_uses_form_elicitation_when_supported(
+def test_complete_task_confirms_then_completes_in_threads(
     fake_2do_db: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    context = _FakeContext(
-        elicitation=_form_elicitation(),
-        response=AcceptedElicitation(data=True),
-    )
+    context = _FakeContext(elicitation=None)
     completed_uids: list[str] = []
+    confirmation_calls = []
     threaded_functions = []
+
+    async def confirm(ctx, preview, **kwargs):
+        confirmation_calls.append((ctx, preview, kwargs))
+        return ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task completion confirmed.",
+        )
 
     async def to_thread(function, /, *args, **kwargs):
         threaded_functions.append(function)
         return function(*args, **kwargs)
 
+    monkeypatch.setattr(server, "_confirm", confirm)
     monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
     monkeypatch.setattr(
         server,
         "complete_task_direct",
         lambda uid: completed_uids.append(uid) or _completed_result(),
-    )
-    monkeypatch.setattr(
-        server,
-        "confirm_action_native",
-        lambda _preview, **_kwargs: pytest.fail("native confirmation should not be used"),
     )
 
     result = asyncio.run(server.complete_task(uid="task-active", ctx=context))
@@ -946,132 +1007,53 @@ def test_complete_task_uses_form_elicitation_when_supported(
     assert result.status is TaskCompletionStatus.COMPLETED
     assert completed_uids == ["task-active"]
     assert threaded_functions == [server._require_open_task, server.complete_task_direct]
-    assert context.calls == [
+    assert confirmation_calls == [
         (
+            context,
             "Title: Active task\nList: Inbox\nUID: task-active",
-            bool,
-            "Complete this task?",
+            {
+                "response_title": "Complete this task?",
+                "action": "Complete",
+                "operation": "completion",
+            },
         )
     ]
 
 
 @pytest.mark.parametrize(
-    "response",
+    ("confirmation_status", "expected_status"),
     [
-        AcceptedElicitation(data=False),
-        DeclinedElicitation(),
-        CancelledElicitation(),
+        (ConfirmationStatus.CANCELLED, TaskCompletionStatus.CANCELLED),
+        (ConfirmationStatus.FAILED, TaskCompletionStatus.FAILED),
     ],
 )
-def test_complete_task_stops_when_elicitation_is_not_accepted(
+def test_complete_task_maps_unconfirmed_result(
     fake_2do_db: Path,
     monkeypatch: pytest.MonkeyPatch,
-    response: object,
-) -> None:
-    context = _FakeContext(elicitation=_form_elicitation(), response=response)
-    monkeypatch.setattr(
-        server,
-        "complete_task_direct",
-        lambda _uid: pytest.fail("task should not be completed"),
-    )
-    monkeypatch.setattr(
-        server,
-        "confirm_action_native",
-        lambda _preview, **_kwargs: pytest.fail("native confirmation should not be used"),
-    )
-
-    result = asyncio.run(server.complete_task(uid="task-active", ctx=context))
-
-    assert result.status is TaskCompletionStatus.CANCELLED
-
-
-def test_complete_task_fails_closed_when_elicitation_errors(
-    fake_2do_db: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    context = _FakeContext(
-        elicitation=_form_elicitation(),
-        error=RuntimeError("client disconnected"),
-    )
-    monkeypatch.setattr(
-        server,
-        "complete_task_direct",
-        lambda _uid: pytest.fail("task should not be completed"),
-    )
-    monkeypatch.setattr(
-        server,
-        "confirm_action_native",
-        lambda _preview, **_kwargs: pytest.fail("native fallback should not be used"),
-    )
-
-    result = asyncio.run(server.complete_task(uid="task-active", ctx=context))
-
-    assert result.status is TaskCompletionStatus.FAILED
-    assert result.message == "Could not confirm task completion: client disconnected"
-
-
-def test_complete_task_uses_native_confirmation_without_elicitation(
-    fake_2do_db: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    context = _FakeContext(elicitation=None)
-    monkeypatch.setattr(
-        server,
-        "confirm_action_native",
-        lambda _preview, **_kwargs: ConfirmationResult(
-            status=ConfirmationStatus.CONFIRMED,
-            message="Task completion confirmed.",
-        ),
-    )
-    monkeypatch.setattr(server, "complete_task_direct", lambda _uid: _completed_result())
-
-    result = asyncio.run(server.complete_task(uid="task-active", ctx=context))
-
-    assert result.status is TaskCompletionStatus.COMPLETED
-    assert context.calls == []
-
-
-@pytest.mark.parametrize(
-    ("confirmation", "expected_status"),
-    [
-        (
-            ConfirmationResult(
-                status=ConfirmationStatus.CANCELLED,
-                message="Task completion cancelled.",
-            ),
-            TaskCompletionStatus.CANCELLED,
-        ),
-        (
-            ConfirmationResult(
-                status=ConfirmationStatus.FAILED,
-                message="Could not display confirmation.",
-            ),
-            TaskCompletionStatus.FAILED,
-        ),
-    ],
-)
-def test_complete_task_stops_when_native_confirmation_does_not_confirm(
-    fake_2do_db: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    confirmation: ConfirmationResult,
+    confirmation_status: ConfirmationStatus,
     expected_status: TaskCompletionStatus,
 ) -> None:
-    context = _FakeContext(elicitation=None)
-    monkeypatch.setattr(
-        server,
-        "confirm_action_native",
-        lambda _preview, **_kwargs: confirmation,
-    )
+    async def confirm(*_args, **_kwargs):
+        return ConfirmationResult(
+            status=confirmation_status,
+            message="Confirmation stopped.",
+        )
+
+    monkeypatch.setattr(server, "_confirm", confirm)
     monkeypatch.setattr(
         server,
         "complete_task_direct",
         lambda _uid: pytest.fail("task should not be completed"),
     )
 
-    result = asyncio.run(server.complete_task(uid="task-active", ctx=context))
+    result = asyncio.run(
+        server.complete_task(uid="task-active", ctx=_FakeContext(elicitation=None))
+    )
 
     assert result.status is expected_status
-    assert result.message == confirmation.message
+    assert result.uid == "task-active"
+    assert result.task_url == "twodo://x-callback-url/showtask?uid=task-active"
+    assert result.message == "Confirmation stopped."
 
 
 def test_complete_task_tool_annotations_describe_mutation() -> None:

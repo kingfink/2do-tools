@@ -500,32 +500,31 @@ def _get_inbox_list() -> TaskList:
     )
 
 
-def _resolve_list_name(name: str) -> str:
-    requested_name = name.casefold()
-
-    try:
-        task_lists = _get_lists()
-    except (OSError, RuntimeError, sqlite3.Error):
-        return name
-
-    for task_list in task_lists:
-        if task_list.name.casefold() == requested_name:
-            return task_list.name
-
-    return name
-
-
-def _require_list_name(name: str | None) -> str:
-    if name is None:
-        return _get_inbox_list().name
-
+def _find_list_name(name: str) -> str | None:
     requested_name = name.casefold()
 
     for task_list in _get_lists():
         if task_list.name.casefold() == requested_name:
             return task_list.name
 
-    raise ValueError(f"2Do list not found: {name}")
+    return None
+
+
+def _resolve_list_name(name: str) -> str:
+    try:
+        return _find_list_name(name) or name
+    except (OSError, RuntimeError, sqlite3.Error):
+        return name
+
+
+def _require_list_name(name: str | None) -> str:
+    if name is None:
+        return _get_inbox_list().name
+
+    resolved_name = _find_list_name(name)
+    if resolved_name is None:
+        raise ValueError(f"2Do list not found: {name}")
+    return resolved_name
 
 
 def _task_draft(

@@ -169,19 +169,6 @@ def task_preview(draft: TaskDraft) -> str:
     return "\n".join(lines)
 
 
-def confirm_task_native(
-    draft: TaskDraft,
-    *,
-    run_fn: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-) -> ConfirmationResult:
-    return confirm_action_native(
-        task_preview(draft),
-        action="Create",
-        operation="creation",
-        run_fn=run_fn,
-    )
-
-
 def confirm_action_native(
     preview: str,
     *,
@@ -450,6 +437,29 @@ class TaskCompletionCallbackListener(_CallbackListener[TaskCompletionResult]):
         )
 
 
+def _run_callback_flow(
+    listener_factory: Callable[[], _CallbackListener[ResultT]],
+    build_url: Callable[[_CallbackListener[ResultT]], str],
+    fail: Callable[[str], ResultT],
+    *,
+    open_url_fn: Callable[[str], None],
+    timeout: float,
+) -> ResultT:
+    try:
+        with listener_factory() as listener:
+            try:
+                open_url_fn(build_url(listener))
+            except (OSError, subprocess.SubprocessError) as exc:
+                return fail(f"Could not open 2Do: {exc}")
+
+            try:
+                return listener.wait(timeout)
+            except (OSError, RuntimeError) as exc:
+                return fail(f"Could not receive 2Do callback: {exc}")
+    except (OSError, RuntimeError) as exc:
+        return fail(f"Could not start task callback listener: {exc}")
+
+
 def complete_task_direct(
     uid: str,
     *,
@@ -461,83 +471,52 @@ def complete_task_direct(
 ) -> TaskCompletionResult:
     task_url = show_task_url(uid)
 
-    try:
-        listener_context = listener_factory(uid)
-        with listener_context as listener:
-            url = complete_task_url(
-                uid=uid,
-                success_url=listener.success_url,
-                error_url=listener.error_url,
-                cancel_url=listener.cancel_url,
-            )
-
-            try:
-                open_url_fn(url)
-            except (OSError, subprocess.SubprocessError) as exc:
-                return TaskCompletionResult(
-                    status=TaskCompletionStatus.FAILED,
-                    uid=uid,
-                    task_url=task_url,
-                    message=f"Could not open 2Do: {exc}",
-                )
-
-            try:
-                return listener.wait(timeout)
-            except (OSError, RuntimeError) as exc:
-                return TaskCompletionResult(
-                    status=TaskCompletionStatus.FAILED,
-                    uid=uid,
-                    task_url=task_url,
-                    message=f"Could not receive 2Do callback: {exc}",
-                )
-    except (OSError, RuntimeError) as exc:
+    def fail(message: str) -> TaskCompletionResult:
         return TaskCompletionResult(
             status=TaskCompletionStatus.FAILED,
             uid=uid,
             task_url=task_url,
-            message=f"Could not start task callback listener: {exc}",
+            message=message,
         )
+
+    return _run_callback_flow(
+        lambda: listener_factory(uid),
+        lambda listener: complete_task_url(
+            uid=uid,
+            success_url=listener.success_url,
+            error_url=listener.error_url,
+            cancel_url=listener.cancel_url,
+        ),
+        fail,
+        open_url_fn=open_url_fn,
+        timeout=timeout,
+    )
 
 
 def create_task_direct(
     draft: TaskDraft,
     *,
     open_url_fn: Callable[[str], None] = open_url,
-    listener_factory: Callable[[], TaskCreationCallbackListener] = (TaskCreationCallbackListener),
+    listener_factory: Callable[[], TaskCreationCallbackListener] = TaskCreationCallbackListener,
     timeout: float = 30.0,
 ) -> TaskCreationResult:
-    try:
-        listener_context = listener_factory()
-        with listener_context as listener:
-            url = add_task_url(
-                title=draft.title,
-                notes=draft.notes,
-                list_name=draft.list_name,
-                due_date=draft.due_date,
-                tags=draft.tags,
-                repeat=draft.repeat.url_value if draft.repeat is not None else None,
-                success_url=listener.success_url,
-                error_url=listener.error_url,
-                cancel_url=listener.cancel_url,
-            )
+    def fail(message: str) -> TaskCreationResult:
+        return TaskCreationResult(status=TaskCreationStatus.FAILED, message=message)
 
-            try:
-                open_url_fn(url)
-            except (OSError, subprocess.SubprocessError) as exc:
-                return TaskCreationResult(
-                    status=TaskCreationStatus.FAILED,
-                    message=f"Could not open 2Do: {exc}",
-                )
-
-            try:
-                return listener.wait(timeout)
-            except (OSError, RuntimeError) as exc:
-                return TaskCreationResult(
-                    status=TaskCreationStatus.FAILED,
-                    message=f"Could not receive 2Do callback: {exc}",
-                )
-    except (OSError, RuntimeError) as exc:
-        return TaskCreationResult(
-            status=TaskCreationStatus.FAILED,
-            message=f"Could not start task callback listener: {exc}",
-        )
+    return _run_callback_flow(
+        listener_factory,
+        lambda listener: add_task_url(
+            title=draft.title,
+            notes=draft.notes,
+            list_name=draft.list_name,
+            due_date=draft.due_date,
+            tags=draft.tags,
+            repeat=draft.repeat.url_value if draft.repeat is not None else None,
+            success_url=listener.success_url,
+            error_url=listener.error_url,
+            cancel_url=listener.cancel_url,
+        ),
+        fail,
+        open_url_fn=open_url_fn,
+        timeout=timeout,
+    )

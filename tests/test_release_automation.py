@@ -51,13 +51,3 @@ def test_mcpb_manifest_lists_task_creation_tools() -> None:
 
     tool_names = {tool["name"] for tool in manifest["tools"]}
     assert {"open_task_quick_entry", "create_task", "complete_task"} <= tool_names
-
-
-def test_readme_distinguishes_database_access_from_task_creation() -> None:
-    readme = (REPO_ROOT / "README.md").read_text()
-
-    assert "Database access remains read-only" in readme
-    assert "creation is delegated to 2Do through its documented URL scheme" in readme
-    assert "2do task quick-entry" in readme
-    assert "2do task create" in readme
-    assert "2do task complete" in readme

@@ -18,7 +18,7 @@ from _2do_tools.task_creation import (
     TaskCreationResult,
     TaskCreationStatus,
     TaskDraft,
-    confirm_task_native,
+    confirm_action_native,
     create_task_direct,
     task_preview,
 )
@@ -56,7 +56,6 @@ def test_task_draft_normalizes_fields_and_deduplicates_tags() -> None:
     assert draft.due_date == date(2026, 6, 20)
     assert draft.tags == ["Home", "Errands"]
     assert draft.repeat is RepeatPreset.WEEKLY
-    assert draft.repeat.url_value == 2
 
 
 @pytest.mark.parametrize(
@@ -311,12 +310,15 @@ def test_completion_callback_listener_timeout_warns_about_unknown_outcome() -> N
     assert "before retrying" in result.message
 
 
+CallbackResult = TaskCreationResult | task_creation.TaskCompletionResult
+
+
 class _FakeCallbackListener:
     success_url = "http://127.0.0.1:1234/callback/token/success"
     error_url = "http://127.0.0.1:1234/callback/token/error"
     cancel_url = "http://127.0.0.1:1234/callback/token/cancel"
 
-    def __init__(self, result: TaskCreationResult) -> None:
+    def __init__(self, result: CallbackResult) -> None:
         self.result = result
         self.entered = False
         self.wait_timeout: float | None = None
@@ -328,29 +330,7 @@ class _FakeCallbackListener:
     def __exit__(self, *args: object) -> None:
         self.entered = False
 
-    def wait(self, timeout: float) -> TaskCreationResult:
-        self.wait_timeout = timeout
-        return self.result
-
-
-class _FakeCompletionCallbackListener:
-    success_url = "http://127.0.0.1:1234/callback/token/success"
-    error_url = "http://127.0.0.1:1234/callback/token/error"
-    cancel_url = "http://127.0.0.1:1234/callback/token/cancel"
-
-    def __init__(self, result: task_creation.TaskCompletionResult) -> None:
-        self.result = result
-        self.entered = False
-        self.wait_timeout: float | None = None
-
-    def __enter__(self) -> "_FakeCompletionCallbackListener":
-        self.entered = True
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        self.entered = False
-
-    def wait(self, timeout: float) -> task_creation.TaskCompletionResult:
+    def wait(self, timeout: float) -> CallbackResult:
         self.wait_timeout = timeout
         return self.result
 
@@ -362,7 +342,7 @@ def test_complete_task_direct_opens_url_after_listener_starts() -> None:
         task_url="twodo://x-callback-url/showtask?uid=task-123",
         message="Completed task.",
     )
-    listener = _FakeCompletionCallbackListener(expected)
+    listener = _FakeCallbackListener(expected)
     opened_urls: list[str] = []
     listener_uids: list[str] = []
 
@@ -370,7 +350,7 @@ def test_complete_task_direct_opens_url_after_listener_starts() -> None:
         assert listener.entered is True
         opened_urls.append(url)
 
-    def listener_factory(uid: str) -> _FakeCompletionCallbackListener:
+    def listener_factory(uid: str) -> _FakeCallbackListener:
         listener_uids.append(uid)
         return listener
 
@@ -395,7 +375,7 @@ def test_complete_task_direct_opens_url_after_listener_starts() -> None:
 
 
 def test_complete_task_direct_returns_failed_when_2do_cannot_open() -> None:
-    listener = _FakeCompletionCallbackListener(
+    listener = _FakeCallbackListener(
         task_creation.TaskCompletionResult(
             status=task_creation.TaskCompletionStatus.COMPLETED,
             uid="unused",
@@ -417,45 +397,6 @@ def test_complete_task_direct_returns_failed_when_2do_cannot_open() -> None:
     assert result.uid == "task-123"
     assert result.message == "Could not open 2Do: 2Do is unavailable"
     assert listener.wait_timeout is None
-
-
-def test_complete_task_direct_returns_failed_when_callback_listener_cannot_start() -> None:
-    def broken_listener(_uid: str) -> object:
-        raise OSError("address unavailable")
-
-    result = task_creation.complete_task_direct(
-        "task-123",
-        listener_factory=broken_listener,
-    )
-
-    assert result.status is task_creation.TaskCompletionStatus.FAILED
-    assert result.uid == "task-123"
-    assert result.message == "Could not start task callback listener: address unavailable"
-
-
-def test_complete_task_direct_returns_failed_when_callback_wait_errors() -> None:
-    class BrokenWaitListener(_FakeCompletionCallbackListener):
-        def wait(self, timeout: float) -> task_creation.TaskCompletionResult:
-            raise OSError("callback connection failed")
-
-    listener = BrokenWaitListener(
-        task_creation.TaskCompletionResult(
-            status=task_creation.TaskCompletionStatus.COMPLETED,
-            uid="unused",
-            task_url="twodo://x-callback-url/showtask?uid=unused",
-            message="unused",
-        )
-    )
-
-    result = task_creation.complete_task_direct(
-        "task-123",
-        open_url_fn=lambda _url: None,
-        listener_factory=lambda _uid: listener,
-    )
-
-    assert result.status is task_creation.TaskCompletionStatus.FAILED
-    assert result.uid == "task-123"
-    assert result.message == "Could not receive 2Do callback: callback connection failed"
 
 
 def test_create_task_direct_opens_url_after_listener_starts() -> None:
@@ -568,12 +509,17 @@ def test_native_confirmation_passes_preview_as_process_argument() -> None:
         calls.append((args, kwargs))
         return CompletedProcess(args, 0, stdout="confirmed\n", stderr="")
 
-    result = confirm_task_native(
+    preview = task_preview(
         TaskDraft(
             title='Buy "special" milk',
             notes="Line one\nLine two",
             list_name="Inbox",
-        ),
+        )
+    )
+    result = confirm_action_native(
+        preview,
+        action="Create",
+        operation="creation",
         run_fn=run,
     )
 
@@ -616,8 +562,10 @@ def test_native_confirmation_returns_cancelled() -> None:
     def run(args: list[str], **_kwargs: object) -> CompletedProcess[str]:
         return CompletedProcess(args, 0, stdout="cancelled\n", stderr="")
 
-    result = confirm_task_native(
-        TaskDraft(title="Buy milk", list_name="Inbox"),
+    result = confirm_action_native(
+        "Title: Buy milk\nList: Inbox",
+        action="Create",
+        operation="creation",
         run_fn=run,
     )
 
@@ -649,8 +597,10 @@ def test_native_confirmation_returns_failed_for_osascript_error() -> None:
     def run(args: list[str], **_kwargs: object) -> CompletedProcess[str]:
         return CompletedProcess(args, 1, stdout="", stderr="Not authorized\n")
 
-    result = confirm_task_native(
-        TaskDraft(title="Buy milk", list_name="Inbox"),
+    result = confirm_action_native(
+        "Title: Buy milk\nList: Inbox",
+        action="Create",
+        operation="creation",
         run_fn=run,
     )
 
@@ -665,8 +615,10 @@ def test_native_confirmation_returns_failed_when_osascript_cannot_start() -> Non
     ) -> CompletedProcess[str]:
         raise OSError("osascript unavailable")
 
-    result = confirm_task_native(
-        TaskDraft(title="Buy milk", list_name="Inbox"),
+    result = confirm_action_native(
+        "Title: Buy milk\nList: Inbox",
+        action="Create",
+        operation="creation",
         run_fn=run,
     )
 

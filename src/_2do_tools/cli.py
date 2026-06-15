@@ -348,20 +348,23 @@ def _open_task(args: argparse.Namespace) -> int:
     return 0
 
 
+def _confirm_in_terminal(prompt: str) -> bool:
+    if not sys.stdin.isatty():
+        return False
+
+    try:
+        answer = input(prompt)
+    except EOFError:
+        return False
+
+    return answer.strip().casefold() in {"y", "yes"}
+
+
 def _complete_task(args: argparse.Namespace) -> int:
     task = server._require_open_task(args.uid)
     print(server.task_completion_preview(task))
 
-    if not sys.stdin.isatty():
-        print("Task completion cancelled.")
-        return 0
-
-    try:
-        answer = input("Complete this task? [y/N] ")
-    except EOFError:
-        answer = ""
-
-    if answer.strip().casefold() not in {"y", "yes"}:
+    if not _confirm_in_terminal("Complete this task? [y/N] "):
         print("Task completion cancelled.")
         return 0
 
@@ -387,16 +390,7 @@ def _create_task(args: argparse.Namespace) -> int:
     draft = server._task_draft(**_task_creation_kwargs(args))
     print(task_preview(draft))
 
-    if not sys.stdin.isatty():
-        print("Task creation cancelled.")
-        return 0
-
-    try:
-        answer = input("Create this task? [y/N] ")
-    except EOFError:
-        answer = ""
-
-    if answer.strip().casefold() not in {"y", "yes"}:
+    if not _confirm_in_terminal("Create this task? [y/N] "):
         print("Task creation cancelled.")
         return 0
 
