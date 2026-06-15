@@ -108,10 +108,42 @@ def test_repo_install_ref_pattern_recognizes_stable() -> None:
 
 
 @pytest.mark.parametrize(
+    "delimiter",
+    [
+        "",
+        " ",
+        "\n",
+        '"',
+        "'",
+        "`",
+        ",",
+        ")",
+        "]",
+        "}",
+        ">",
+    ],
+)
+def test_repo_install_ref_pattern_accepts_source_delimiters(delimiter: str) -> None:
+    release_metadata = load_module("release_metadata", "scripts/release_metadata.py")
+
+    match = release_metadata.REPO_INSTALL_REF_RE.search(STABLE_GIT_REF + delimiter)
+
+    assert match is not None
+    assert match.group(0) == STABLE_GIT_REF
+
+
+@pytest.mark.parametrize(
     "ref",
     [
+        "stable/next",
+        "stable+next",
+        "stable@next",
         "stable-next",
         "stable123",
+        "stable_next",
+        "stable.next",
+        "stable?next",
+        "stable#next",
         "v1.2.3-next",
         "v1.2.3rc1",
     ],

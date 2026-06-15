@@ -17,7 +17,8 @@ VERSION_TAG_RE = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 PYPROJECT_VERSION_RE = re.compile(r'version = "[0-9]+\.[0-9]+\.[0-9]+"')
 REPO_INSTALL_REF_RE = re.compile(
     r"git\+https://github\.com/kingfink/2do-tools@"
-    r"(?P<ref>stable|v[0-9]+\.[0-9]+\.[0-9]+)(?![A-Za-z0-9._-])"
+    r"(?P<ref>stable|v[0-9]+\.[0-9]+\.[0-9]+)"
+    r"""(?=$|[\s"'`,)\]}>])"""
 )
 UV_LOCK_PROJECT_VERSION_RE = re.compile(
     r'(?ms)(\[\[package\]\]\nname = "2do-tools"\nversion = ")[^"]+(")'
