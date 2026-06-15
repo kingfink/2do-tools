@@ -16,7 +16,8 @@ TAG_RE = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 VERSION_TAG_RE = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 PYPROJECT_VERSION_RE = re.compile(r'version = "[0-9]+\.[0-9]+\.[0-9]+"')
 REPO_INSTALL_REF_RE = re.compile(
-    r"git\+https://github\.com/kingfink/2do-tools@(?P<tag>v[0-9]+\.[0-9]+\.[0-9]+)"
+    r"git\+https://github\.com/kingfink/2do-tools@"
+    r"(?P<ref>stable|v[0-9]+\.[0-9]+\.[0-9]+)"
 )
 UV_LOCK_PROJECT_VERSION_RE = re.compile(
     r'(?ms)(\[\[package\]\]\nname = "2do-tools"\nversion = ")[^"]+(")'
@@ -110,7 +111,11 @@ def update_repo_install_refs(relative_path: str, tag: str) -> None:
     path = repo_path(relative_path)
     content = path.read_text()
     updated = REPO_INSTALL_REF_RE.sub(
-        lambda match: match.group(0).replace(match.group("tag"), tag),
+        lambda match: (
+            match.group(0)
+            if match.group("ref") == "stable"
+            else match.group(0).replace(match.group("ref"), tag)
+        ),
         content,
     )
 
@@ -188,8 +193,9 @@ def verify_release_metadata(tag: str) -> None:
         content = repo_path(file_name).read_text()
         for match in REPO_INSTALL_REF_RE.finditer(content):
             found_install_ref = True
-            if match.group("tag") != tag:
-                stale_tags.append(f"{file_name}: {match.group('tag')}")
+            ref = match.group("ref")
+            if ref != "stable" and ref != tag:
+                stale_tags.append(f"{file_name}: {ref}")
 
     if not found_install_ref:
         raise SystemExit("No 2do-tools git install references found")

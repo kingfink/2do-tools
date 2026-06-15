@@ -4,8 +4,10 @@
       "type": "stdio",
       "command": "uvx",
       "args": [
+        "--refresh-package",
+        "2do-tools",
         "--from",
-        "git+https://github.com/kingfink/2do-tools@v0.8.0",
+        "git+https://github.com/kingfink/2do-tools@stable",
         "2do",
         "mcp",
         "serve"
