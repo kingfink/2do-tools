@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "2do-tools",
   "display_name": "2Do Tools",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Read, create, and complete tasks in the local 2Do macOS app.",
   "long_description": "A local MCP server for reading tasks from a read-only backup and creating or completing confirmed tasks through the 2Do macOS app.",
   "author": {
