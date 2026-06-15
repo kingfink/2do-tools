@@ -123,6 +123,19 @@ def test_release_metadata_rejects_invalid_and_stale_refs(tmp_path: Path, monkeyp
     release_metadata.verify_release_metadata("v1.2.3")
 
 
+def test_verify_ignores_install_refs_inside_test_files(tmp_path: Path, monkeypatch) -> None:
+    release_metadata = load_module("release_metadata", "scripts/release_metadata.py")
+    prefix = STABLE_GIT_REF.removesuffix("stable")
+    monkeypatch.setattr(release_metadata, "REPO_ROOT", tmp_path)
+
+    write_release_repo(tmp_path, [STABLE_GIT_REF])
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_docs.py").write_text(f'assert "{prefix}v0.8.0" not in readme\n')
+
+    release_metadata.verify_release_metadata("v1.2.3")
+
+
 def test_release_script_verifies_tag_before_publication_and_stable_update() -> None:
     script = (REPO_ROOT / "scripts" / "release.sh").read_text()
     publication = script[

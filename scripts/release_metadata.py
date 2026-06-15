@@ -196,6 +196,10 @@ def verify_release_metadata(tag: str) -> None:
     invalid_refs = []
     stale_tags = []
     for file_name in tracked_text_files():
+        # Test files embed version-tag URLs as fixtures, not shipped install
+        # instructions, so they must not count as stale release refs.
+        if file_name.startswith("tests/"):
+            continue
         content = repo_path(file_name).read_text()
         for match in REPO_INSTALL_URL_RE.finditer(content):
             found_install_ref = True
