@@ -10,12 +10,17 @@
   command `2do`, server command `2do mcp serve`. Treat `2do-mcp` as legacy only.
 - Keep changes tight: prefer modifying existing code/docs/tests over adding new
   scaffolding, and add tests only for meaningful behavior or regression risk.
+- Keep `docs/` local-only and ignored. Never force-add or commit files under
+  `docs/`, including plans, specifications, or generated documentation.
 - Use `uv`: setup with `uv sync --extra dev`; checks are
   `git ls-files '*.py' -z | xargs -0 python3 -m py_compile`,
   `uv run --extra dev ruff check .`, `uv run --extra dev ruff format --check .`,
   and `uv run --extra dev pytest -q`. Keep `uv.lock` tracked for frozen CI.
-- Keep install/distribution centered on pinned uvx-from-git:
-  `uvx --from git+https://github.com/kingfink/2do-tools@vX.Y.Z 2do mcp serve`.
+- Keep MCP install/distribution centered on the refreshed stable Git ref:
+  `uvx --refresh-package 2do-tools --from git+https://github.com/kingfink/2do-tools@stable 2do mcp serve`.
+  Semantic version tags remain immutable release identifiers, and release
+  automation preserves stable install refs while updating version-specific
+  metadata.
   For releases, update `pyproject.toml`, `uv.lock`, `README.md`, `.mcp.json`,
   `plugins/2do/.mcp.json`, `mcpb/manifest.json`, and `mcpb/server.py` together.
 - `plugins/2do/` is the plugin source of truth; root marketplace files only
