@@ -3,13 +3,24 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STABLE_GIT_REF = "git+https://github.com/kingfink/2do-tools@stable"
+STABLE_UVX_ARGS = [
+    "--refresh-package",
+    "2do-tools",
+    "--from",
+    STABLE_GIT_REF,
+    "2do",
+    "mcp",
+    "serve",
+]
 
 
-def load_release_metadata():
-    script_path = REPO_ROOT / "scripts" / "release_metadata.py"
-    spec = importlib.util.spec_from_file_location("release_metadata", script_path)
+def load_module(module_name: str, relative_path: str):
+    module_path = REPO_ROOT / relative_path
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
     assert spec is not None
     assert spec.loader is not None
 
@@ -19,13 +30,7 @@ def load_release_metadata():
 
 
 def assert_stable_uvx_args(args: list[str]) -> None:
-    assert args[:4] == [
-        "--refresh-package",
-        "2do-tools",
-        "--from",
-        STABLE_GIT_REF,
-    ]
-    assert args[-3:] == ["2do", "mcp", "serve"]
+    assert args == STABLE_UVX_ARGS
 
 
 def test_prepare_release_stages_all_release_metadata_files() -> None:
@@ -87,14 +92,14 @@ def test_mcp_configs_launch_from_the_stable_git_ref() -> None:
 
 
 def test_mcpb_server_launches_from_the_stable_git_ref() -> None:
-    server = (REPO_ROOT / "mcpb" / "server.py").read_text()
+    server = load_module("mcpb_server", "mcpb/server.py")
 
-    assert f'GIT_REF = "{STABLE_GIT_REF}"' in server
-    assert '"uvx", "--refresh-package", "2do-tools", "--from", GIT_REF' in server
+    assert server.GIT_REF == STABLE_GIT_REF
+    assert server.COMMAND == ("uvx", *STABLE_UVX_ARGS)
 
 
 def test_repo_install_ref_pattern_recognizes_stable() -> None:
-    release_metadata = load_release_metadata()
+    release_metadata = load_module("release_metadata", "scripts/release_metadata.py")
 
     match = release_metadata.REPO_INSTALL_REF_RE.fullmatch(STABLE_GIT_REF)
 
@@ -102,8 +107,24 @@ def test_repo_install_ref_pattern_recognizes_stable() -> None:
     assert match.group("ref") == "stable"
 
 
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "stable-next",
+        "stable123",
+        "v1.2.3-next",
+        "v1.2.3rc1",
+    ],
+)
+def test_repo_install_ref_pattern_rejects_ref_continuations(ref: str) -> None:
+    release_metadata = load_module("release_metadata", "scripts/release_metadata.py")
+    install_ref = STABLE_GIT_REF.removesuffix("stable") + ref
+
+    assert release_metadata.REPO_INSTALL_REF_RE.search(install_ref) is None
+
+
 def test_update_repo_install_refs_preserves_stable(tmp_path, monkeypatch) -> None:
-    release_metadata = load_release_metadata()
+    release_metadata = load_module("release_metadata", "scripts/release_metadata.py")
     config_path = tmp_path / "config.json"
     install_ref_prefix = STABLE_GIT_REF.removesuffix("stable")
     config_path.write_text(f"{STABLE_GIT_REF}\n{install_ref_prefix}v0.8.0\n")
