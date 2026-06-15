@@ -1,3 +1,4 @@
+import asyncio
 import json
 import plistlib
 import secrets
@@ -7,18 +8,37 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
+from fastmcp.server.elicitation import AcceptedElicitation
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from .storage import backups_db_dir, backups_db_path
-from .url_schemes import open_url, search_url, show_list_url, show_task_url
+from .task_mutations import (
+    ConfirmationResult,
+    ConfirmationStatus,
+    RepeatPreset,
+    TaskCompletionResult,
+    TaskCompletionStatus,
+    TaskCreationResult,
+    TaskCreationStatus,
+    TaskDraft,
+    complete_task_direct,
+    confirm_action_native,
+    create_task_direct,
+    task_preview,
+)
+from .url_schemes import add_task_url, open_url, search_url, show_list_url, show_task_url
 
 MCP_INSTRUCTIONS = (
-    "2Do Tools is read-only access to the local 2Do macOS task database. "
+    "2Do Tools reads from a local, read-only backup of the 2Do macOS task database. "
     "Use list_tasks for filtered lookup and the list_tasks_* shortcuts for common date groups. "
     "Use exact local dates for relative date requests. Task and list results include twodo:// "
     "URLs. open_task/open_list/open_search only open views on the Mac running the server; use "
-    "them when the user asks to open something. Run refresh_backup_db if results look stale."
+    "them when the user asks to open something. open_task_quick_entry opens a pre-filled editor "
+    "that the user must save in 2Do. create_task creates directly only after MCP elicitation or "
+    "native confirmation on the host Mac. complete_task completes exactly one existing task after "
+    "the same confirmation. Run refresh_backup_db if results look stale."
 )
 
 mcp = FastMCP("2Do", instructions=MCP_INSTRUCTIONS)
@@ -68,7 +88,14 @@ REQUIRED_BACKUP_COLUMNS = {
         "title",
         "uid",
     ],
-    "calendars": ["isarchived", "isdeleted", "title", "uid"],
+    "calendars": [
+        "isarchived",
+        "isdeleted",
+        "isinboxcal",
+        "parentuid",
+        "title",
+        "uid",
+    ],
     "tags": ["isdeleted", "tag", "uid"],
 }
 
@@ -139,6 +166,7 @@ class TaskFilters:
     include_deleted: bool = False
     include_archived: bool = False
     completed: bool | None = None
+    task_uid: str | None = None
     list_id: str | None = None
     list_name: str | None = None
     tag_id: str | None = None
@@ -318,6 +346,10 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
         clauses.append("t.iscompleted = ?")
         params.append(1 if filters.completed else 0)
 
+    if filters.task_uid is not None:
+        clauses.append("t.uid = ?")
+        params.append(filters.task_uid)
+
     if filters.list_id is not None:
         clauses.append("t.calendaruid = ?")
         params.append(filters.list_id)
@@ -427,6 +459,7 @@ def _get_lists() -> list[TaskList]:
               and uid != ''
               and coalesce(isdeleted, 0) = 0
               and coalesce(isarchived, 0) = 0
+              and parentuid in ('2DoCalGroupLists', '2DoCalGroupInbox')
             order by lower(coalesce(title, '')), uid
             """
         ).fetchall()
@@ -441,19 +474,75 @@ def _get_lists() -> list[TaskList]:
     ]
 
 
-def _resolve_list_name(name: str) -> str:
+def _get_inbox_list() -> TaskList:
+    with _connect() as connection:
+        row = connection.execute(
+            """
+            select
+                uid as list_id
+                , title as list_name
+            from calendars
+            where coalesce(isinboxcal, 0) = 1
+              and coalesce(isdeleted, 0) = 0
+            order by uid
+            limit 1
+            """
+        ).fetchone()
+
+    if row is None:
+        raise ValueError("2Do inbox list not found")
+
+    list_name = row["list_name"] or ""
+    return TaskList(
+        id=row["list_id"],
+        name=list_name,
+        url=show_list_url(list_name),
+    )
+
+
+def _find_list_name(name: str) -> str | None:
     requested_name = name.casefold()
 
-    try:
-        task_lists = _get_lists()
-    except (OSError, RuntimeError, sqlite3.Error):
-        return name
-
-    for task_list in task_lists:
+    for task_list in _get_lists():
         if task_list.name.casefold() == requested_name:
             return task_list.name
 
-    return name
+    return None
+
+
+def _resolve_list_name(name: str) -> str:
+    try:
+        return _find_list_name(name) or name
+    except (OSError, RuntimeError, sqlite3.Error):
+        return name
+
+
+def _require_list_name(name: str | None) -> str:
+    if name is None:
+        return _get_inbox_list().name
+
+    resolved_name = _find_list_name(name)
+    if resolved_name is None:
+        raise ValueError(f"2Do list not found: {name}")
+    return resolved_name
+
+
+def _task_draft(
+    title: str,
+    notes: str | None,
+    list_name: str | None,
+    due_date: date | None,
+    tags: list[str] | None,
+    repeat: RepeatPreset | None,
+) -> TaskDraft:
+    return TaskDraft(
+        title=title,
+        notes=notes,
+        list_name=_require_list_name(list_name),
+        due_date=due_date,
+        tags=tags,
+        repeat=repeat,
+    )
 
 
 def _get_tags() -> list[Tag]:
@@ -567,6 +656,30 @@ def _get_tasks(filters: TaskFilters) -> list[Task]:
         ).fetchall()
 
         return [_task_from_row(row, tags_by_id) for row in rows]
+
+
+def _get_task(uid: str) -> Task | None:
+    tasks = _get_tasks(
+        TaskFilters(
+            include_archived=True,
+            task_uid=uid,
+            limit=1,
+        )
+    )
+    return tasks[0] if tasks else None
+
+
+def _require_open_task(uid: str) -> Task:
+    task = _get_task(uid)
+    if task is None:
+        raise ValueError(f"2Do task not found: {uid}")
+    if task.completed:
+        raise ValueError(f"Task is already complete: {task.title}")
+    return task
+
+
+def task_completion_preview(task: Task) -> str:
+    return f"Title: {task.title}\nList: {task.list.name}\nUID: {task.uuid}"
 
 
 def ensure_backup_db_current(*, now: datetime | None = None) -> None:
@@ -960,6 +1073,160 @@ def open_search(text: str) -> OpenedUrl:
     url = search_url(text)
     open_url(url)
     return OpenedUrl(url=url, opened=True)
+
+
+@mcp.tool()
+def open_task_quick_entry(
+    title: str,
+    notes: str | None = None,
+    list_name: str | None = None,
+    due_date: date | None = None,
+    tags: list[str] | None = None,
+    repeat: RepeatPreset | None = None,
+) -> OpenedUrl:
+    """Open a pre-filled Quick Entry editor in 2Do without saving the task."""
+    draft = _task_draft(title, notes, list_name, due_date, tags, repeat)
+    url = add_task_url(
+        title=draft.title,
+        notes=draft.notes,
+        list_name=draft.list_name,
+        due_date=draft.due_date,
+        tags=draft.tags,
+        repeat=draft.repeat.url_value if draft.repeat is not None else None,
+        use_quick_entry=True,
+    )
+    open_url(url)
+    return OpenedUrl(url=url, opened=True)
+
+
+def _supports_form_elicitation(ctx: Context) -> bool:
+    client_params = ctx.session.client_params
+    if client_params is None:
+        return False
+
+    elicitation = client_params.capabilities.elicitation
+    return elicitation is not None and elicitation.form is not None
+
+
+async def _confirm(
+    ctx: Context,
+    preview: str,
+    *,
+    response_title: str,
+    action: str,
+    operation: str,
+) -> ConfirmationResult:
+    if _supports_form_elicitation(ctx):
+        try:
+            response = await ctx.elicit(
+                preview,
+                bool,
+                response_title=response_title,
+            )
+        except Exception as exc:
+            return ConfirmationResult(
+                status=ConfirmationStatus.FAILED,
+                message=f"Could not confirm task {operation}: {exc}",
+            )
+
+        if isinstance(response, AcceptedElicitation) and response.data is True:
+            return ConfirmationResult(
+                status=ConfirmationStatus.CONFIRMED,
+                message=f"Task {operation} confirmed.",
+            )
+
+        return ConfirmationResult(
+            status=ConfirmationStatus.CANCELLED,
+            message=f"Task {operation} cancelled.",
+        )
+
+    return await asyncio.to_thread(
+        confirm_action_native,
+        preview,
+        action=action,
+        operation=operation,
+    )
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+async def create_task(
+    ctx: Context,
+    title: str,
+    notes: str | None = None,
+    list_name: str | None = None,
+    due_date: date | None = None,
+    tags: list[str] | None = None,
+    repeat: RepeatPreset | None = None,
+) -> TaskCreationResult:
+    """Create a 2Do task after explicit user confirmation."""
+    draft = await asyncio.to_thread(
+        _task_draft,
+        title=title,
+        notes=notes,
+        list_name=list_name,
+        due_date=due_date,
+        tags=tags,
+        repeat=repeat,
+    )
+    confirmation = await _confirm(
+        ctx,
+        task_preview(draft),
+        response_title="Create this task?",
+        action="Create",
+        operation="creation",
+    )
+    if confirmation.status is not ConfirmationStatus.CONFIRMED:
+        return TaskCreationResult(
+            status=(
+                TaskCreationStatus.CANCELLED
+                if confirmation.status is ConfirmationStatus.CANCELLED
+                else TaskCreationStatus.FAILED
+            ),
+            message=confirmation.message,
+        )
+
+    return await asyncio.to_thread(create_task_direct, draft)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+async def complete_task(ctx: Context, uid: str) -> TaskCompletionResult:
+    """Complete one existing 2Do task after explicit user confirmation."""
+    task = await asyncio.to_thread(_require_open_task, uid)
+    preview = task_completion_preview(task)
+    confirmation = await _confirm(
+        ctx,
+        preview,
+        response_title="Complete this task?",
+        action="Complete",
+        operation="completion",
+    )
+    if confirmation.status is not ConfirmationStatus.CONFIRMED:
+        return TaskCompletionResult(
+            status=(
+                TaskCompletionStatus.CANCELLED
+                if confirmation.status is ConfirmationStatus.CANCELLED
+                else TaskCompletionStatus.FAILED
+            ),
+            uid=task.uuid,
+            task_url=task.url,
+            message=confirmation.message,
+        )
+
+    return await asyncio.to_thread(complete_task_direct, task.uuid)
 
 
 @mcp.tool()

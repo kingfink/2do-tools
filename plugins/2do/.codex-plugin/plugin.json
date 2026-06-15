@@ -1,7 +1,7 @@
 {
   "name": "2do",
   "version": "0.1.0",
-  "description": "Read tasks from the local 2Do macOS app.",
+  "description": "Read, create, and complete tasks in the local 2Do macOS app.",
   "author": {
     "name": "Tim Finkel",
     "url": "https://github.com/kingfink"
@@ -10,8 +10,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "2Do",
-    "shortDescription": "Read tasks from 2Do.",
-    "longDescription": "Tools for reading open and completed tasks from the local 2Do macOS app through a read-only MCP server.",
+    "shortDescription": "Read, create, and complete tasks in 2Do.",
+    "longDescription": "Tools for reading tasks from a local read-only backup and creating or completing confirmed tasks through the 2Do macOS app.",
     "developerName": "Tim Finkel",
     "category": "Productivity",
     "capabilities": ["Tools"],

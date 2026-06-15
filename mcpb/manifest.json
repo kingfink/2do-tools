@@ -3,8 +3,8 @@
   "name": "2do-tools",
   "display_name": "2Do Tools",
   "version": "0.7.0",
-  "description": "Read tasks from the local 2Do macOS app.",
-  "long_description": "A local, read-only MCP server for querying open and completed tasks from the 2Do macOS app.",
+  "description": "Read, create, and complete tasks in the local 2Do macOS app.",
+  "long_description": "A local MCP server for reading tasks from a read-only backup and creating or completing confirmed tasks through the 2Do macOS app.",
   "author": {
     "name": "Tim Finkel",
     "url": "https://github.com/kingfink"
@@ -78,6 +78,18 @@
     {
       "name": "open_search",
       "description": "Open a search in 2Do using 2Do's macOS URL scheme."
+    },
+    {
+      "name": "open_task_quick_entry",
+      "description": "Open a pre-filled Quick Entry editor in 2Do without saving the task."
+    },
+    {
+      "name": "create_task",
+      "description": "Create a 2Do task after explicit user confirmation."
+    },
+    {
+      "name": "complete_task",
+      "description": "Complete one existing 2Do task after explicit user confirmation."
     },
     {
       "name": "refresh_backup_db",

@@ -1,9 +1,17 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
 from _2do_tools import cli, server
+from _2do_tools.task_mutations import (
+    RepeatPreset,
+    TaskCompletionResult,
+    TaskCompletionStatus,
+    TaskCreationResult,
+    TaskCreationStatus,
+    TaskDraft,
+)
 
 
 def _task(*, title: str = "Active task", completed: bool = False) -> server.Task:
@@ -306,3 +314,343 @@ def test_2do_connect_recommends_2do_serve(capsys: pytest.CaptureFixture[str]) ->
     assert cli.main(["mcp", "connect", "chatgpt"]) == 0
 
     assert "2do mcp serve --transport streamable-http" in capsys.readouterr().out
+
+
+def test_2do_task_quick_entry_passes_all_supported_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def open_task_quick_entry(**kwargs: object) -> server.OpenedUrl:
+        calls.append(kwargs)
+        return server.OpenedUrl(url="twodo://x-callback-url/add?usequickentry=1", opened=True)
+
+    monkeypatch.setattr(cli.server, "open_task_quick_entry", open_task_quick_entry)
+
+    assert (
+        cli.main(
+            [
+                "task",
+                "quick-entry",
+                "Buy milk",
+                "--notes",
+                "Whole milk",
+                "--list",
+                "Inbox",
+                "--due",
+                "2026-06-20",
+                "--tag",
+                "Home",
+                "--tag",
+                "Errands",
+                "--repeat",
+                "weekly",
+            ]
+        )
+        == 0
+    )
+
+    assert calls == [
+        {
+            "title": "Buy milk",
+            "notes": "Whole milk",
+            "list_name": "Inbox",
+            "due_date": date(2026, 6, 20),
+            "tags": ["Home", "Errands"],
+            "repeat": RepeatPreset.WEEKLY,
+        }
+    ]
+    assert capsys.readouterr().out == "twodo://x-callback-url/add?usequickentry=1\n"
+
+
+class _InteractiveStdin:
+    def isatty(self) -> bool:
+        return True
+
+
+class _NonInteractiveStdin:
+    def isatty(self) -> bool:
+        return False
+
+
+def _draft() -> TaskDraft:
+    return TaskDraft(
+        title="Buy milk",
+        notes="Whole milk",
+        list_name="Inbox",
+        due_date=date(2026, 6, 20),
+        tags=["Home"],
+        repeat=RepeatPreset.WEEKLY,
+    )
+
+
+def test_2do_task_create_confirms_and_prints_created_task(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    draft = _draft()
+    draft_calls: list[dict[str, object]] = []
+    created_drafts: list[TaskDraft] = []
+
+    def task_draft(**kwargs: object) -> TaskDraft:
+        draft_calls.append(kwargs)
+        return draft
+
+    monkeypatch.setattr(cli.server, "_task_draft", task_draft)
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
+    monkeypatch.setattr(
+        cli,
+        "create_task_direct",
+        lambda value: (
+            created_drafts.append(value)
+            or TaskCreationResult(
+                status=TaskCreationStatus.CREATED,
+                uid="task-123",
+                task_url="twodo://x-callback-url/showtask?uid=task-123",
+                message="Created task.",
+            )
+        ),
+    )
+
+    assert (
+        cli.main(
+            [
+                "task",
+                "create",
+                "Buy milk",
+                "--notes",
+                "Whole milk",
+                "--due",
+                "2026-06-20",
+                "--tag",
+                "Home",
+                "--repeat",
+                "weekly",
+            ]
+        )
+        == 0
+    )
+
+    assert draft_calls == [
+        {
+            "title": "Buy milk",
+            "notes": "Whole milk",
+            "list_name": None,
+            "due_date": date(2026, 6, 20),
+            "tags": ["Home"],
+            "repeat": RepeatPreset.WEEKLY,
+        }
+    ]
+    assert created_drafts == [draft]
+    assert capsys.readouterr().out == (
+        "Title: Buy milk\n"
+        "Notes: Whole milk\n"
+        "List: Inbox\n"
+        "Due: 2026-06-20\n"
+        "Tags: Home\n"
+        "Repeat: weekly\n"
+        "Created task task-123 - twodo://x-callback-url/showtask?uid=task-123\n"
+    )
+
+
+@pytest.mark.parametrize("answer", ["", "n", "nope"])
+def test_2do_task_create_cancels_for_non_affirmative_answer(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    answer: str,
+) -> None:
+    monkeypatch.setattr(cli.server, "_task_draft", lambda **_kwargs: _draft())
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: answer)
+    monkeypatch.setattr(
+        cli,
+        "create_task_direct",
+        lambda _draft: pytest.fail("task should not be created"),
+    )
+
+    assert cli.main(["task", "create", "Buy milk"]) == 0
+
+    assert capsys.readouterr().out.endswith("Task creation cancelled.\n")
+
+
+def test_2do_task_create_cancels_on_eof(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.server, "_task_draft", lambda **_kwargs: _draft())
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda _prompt: (_ for _ in ()).throw(EOFError),
+    )
+    monkeypatch.setattr(
+        cli,
+        "create_task_direct",
+        lambda _draft: pytest.fail("task should not be created"),
+    )
+
+    assert cli.main(["task", "create", "Buy milk"]) == 0
+
+    assert capsys.readouterr().out.endswith("Task creation cancelled.\n")
+
+
+def test_2do_task_create_cancels_for_non_interactive_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.server, "_task_draft", lambda **_kwargs: _draft())
+    monkeypatch.setattr(cli.sys, "stdin", _NonInteractiveStdin())
+    monkeypatch.setattr(
+        cli,
+        "create_task_direct",
+        lambda _draft: pytest.fail("task should not be created"),
+    )
+
+    assert cli.main(["task", "create", "Buy milk"]) == 0
+
+    assert capsys.readouterr().out.endswith("Task creation cancelled.\n")
+
+
+def test_2do_task_create_prints_callback_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.server, "_task_draft", lambda **_kwargs: _draft())
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    monkeypatch.setattr(
+        cli,
+        "create_task_direct",
+        lambda _draft: TaskCreationResult(
+            status=TaskCreationStatus.CANCELLED,
+            message="Task creation cancelled.",
+        ),
+    )
+
+    assert cli.main(["task", "create", "Buy milk"]) == 0
+
+    assert capsys.readouterr().out.endswith("Task creation cancelled.\n")
+
+
+def test_2do_task_create_prints_failure_to_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.server, "_task_draft", lambda **_kwargs: _draft())
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    monkeypatch.setattr(
+        cli,
+        "create_task_direct",
+        lambda _draft: TaskCreationResult(
+            status=TaskCreationStatus.FAILED,
+            message="2Do could not create the task.",
+        ),
+    )
+
+    assert cli.main(["task", "create", "Buy milk"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith("Title: Buy milk\n")
+    assert captured.err == "2Do could not create the task.\n"
+
+
+def test_2do_task_create_has_no_confirmation_bypass() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["task", "create", "Buy milk", "--yes"])
+
+    assert exc_info.value.code == 2
+
+
+def test_2do_task_complete_confirms_and_prints_completed_task(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    task = _task()
+    requested_uids: list[str] = []
+    completed_uids: list[str] = []
+
+    def require_open_task(uid: str) -> server.Task:
+        requested_uids.append(uid)
+        return task
+
+    monkeypatch.setattr(cli.server, "_require_open_task", require_open_task)
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
+    monkeypatch.setattr(
+        cli,
+        "complete_task_direct",
+        lambda uid: (
+            completed_uids.append(uid)
+            or TaskCompletionResult(
+                status=TaskCompletionStatus.COMPLETED,
+                uid=uid,
+                task_url=f"twodo://x-callback-url/showtask?uid={uid}",
+                message="Completed task.",
+            )
+        ),
+    )
+
+    assert cli.main(["task", "complete", "task-active"]) == 0
+
+    assert requested_uids == ["task-active"]
+    assert completed_uids == ["task-active"]
+    assert capsys.readouterr().out == (
+        "Title: Active task\n"
+        "List: Inbox\n"
+        "UID: task-active\n"
+        "Completed task task-active - "
+        "twodo://x-callback-url/showtask?uid=task-active\n"
+    )
+
+
+def test_2do_task_complete_cancels_for_non_affirmative_answer(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.server, "_require_open_task", lambda _uid: _task())
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "no")
+    monkeypatch.setattr(
+        cli,
+        "complete_task_direct",
+        lambda _uid: pytest.fail("task should not be completed"),
+    )
+
+    assert cli.main(["task", "complete", "task-active"]) == 0
+
+    assert capsys.readouterr().out.endswith("Task completion cancelled.\n")
+
+
+def test_2do_task_complete_prints_failure_to_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.server, "_require_open_task", lambda _uid: _task())
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    monkeypatch.setattr(
+        cli,
+        "complete_task_direct",
+        lambda uid: TaskCompletionResult(
+            status=TaskCompletionStatus.FAILED,
+            uid=uid,
+            task_url=f"twodo://x-callback-url/showtask?uid={uid}",
+            message="2Do could not complete the task.",
+        ),
+    )
+
+    assert cli.main(["task", "complete", "task-active"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith("Title: Active task\n")
+    assert captured.err == "2Do could not complete the task.\n"
+
+
+def test_2do_task_complete_has_no_confirmation_bypass() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["task", "complete", "task-active", "--yes"])
+
+    assert exc_info.value.code == 2
