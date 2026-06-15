@@ -42,6 +42,7 @@ def run_release_script(
     release_commit: str = "release-commit",
     tag_commit: str = "release-commit",
     tag_resolution_fails: bool = False,
+    remote_tag_exists: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     repo_root = tmp_path / "repo"
     scripts_dir = repo_root / "scripts"
@@ -85,6 +86,15 @@ if [[ "$1" == "rev-parse" && "${2:-}" == "$RELEASE_TAG^{commit}" ]]; then
   printf '%s\\n' "$TAG_COMMIT"
   exit 0
 fi
+if [[ "$1" == "ls-remote" && "${2:-}" == "--tags" ]]; then
+  if [[ "$REMOTE_TAG_EXISTS" == "1" || -f "$RELEASE_CREATED_FILE" ]]; then
+    printf '%s\\trefs/tags/%s\\n' "$TAG_COMMIT" "$RELEASE_TAG"
+  fi
+  exit 0
+fi
+if [[ "$1" == "fetch" ]]; then
+  exit 0
+fi
 if [[ "$1" == "push" ]]; then
   exit 0
 fi
@@ -104,6 +114,7 @@ if [[ "$1" == "release" && "$2" == "view" ]]; then
   exit
 fi
 if [[ "$1" == "release" && "$2" == "create" ]]; then
+  : > "$RELEASE_CREATED_FILE"
   exit 0
 fi
 if [[ "$1" == "release" && "$2" == "upload" ]]; then
@@ -121,8 +132,10 @@ exit 2
         "COMMAND_LOG": str(command_log),
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
         "RELEASE_COMMIT": release_commit,
+        "RELEASE_CREATED_FILE": str(tmp_path / "release-created"),
         "RELEASE_EXISTS": "1" if release_exists else "0",
         "RELEASE_TAG": "v1.2.3",
+        "REMOTE_TAG_EXISTS": "1" if remote_tag_exists else "0",
         "TAG_COMMIT": tag_commit,
         "TAG_RESOLUTION_FAILS": "1" if tag_resolution_fails else "0",
     }
@@ -170,9 +183,16 @@ def test_new_release_pushes_release_commit_to_stable_after_create(tmp_path: Path
         command for command in commands if command.startswith("gh release create")
     )
     stable_push = "git push origin release-commit:refs/heads/stable --force"
+    tag_fetch = "git fetch --force origin refs/tags/v1.2.3:refs/tags/v1.2.3"
+    tag_resolve = "git rev-parse v1.2.3^{commit}"
 
     assert "--target release-commit" in create_command
-    assert commands.index(create_command) < commands.index(stable_push)
+    assert commands.index("git ls-remote --tags origin refs/tags/v1.2.3") < commands.index(
+        create_command
+    )
+    assert commands.index(create_command) < commands.index(tag_fetch)
+    assert commands.index(tag_fetch) < commands.index(tag_resolve)
+    assert commands.index(tag_resolve) < commands.index(stable_push)
 
 
 def test_existing_release_pushes_matching_release_commit_after_upload(tmp_path: Path) -> None:
@@ -184,8 +204,29 @@ def test_existing_release_pushes_matching_release_commit_after_upload(tmp_path: 
     )
     stable_push = "git push origin release-commit:refs/heads/stable --force"
 
+    assert commands.index(
+        "git fetch --force origin refs/tags/v1.2.3:refs/tags/v1.2.3"
+    ) < commands.index("git rev-parse v1.2.3^{commit}")
     assert commands.index("git rev-parse v1.2.3^{commit}") < commands.index(upload_command)
     assert commands.index(upload_command) < commands.index(stable_push)
+
+
+def test_new_release_rejects_existing_mismatched_remote_tag(tmp_path: Path) -> None:
+    result, commands = run_release_script(
+        tmp_path,
+        release_exists=False,
+        remote_tag_exists=True,
+        tag_commit="different-commit",
+    )
+
+    assert result.returncode != 0
+    assert "does not match current release commit" in result.stderr
+    assert "git ls-remote --tags origin refs/tags/v1.2.3" in commands
+    assert "git fetch --force origin refs/tags/v1.2.3:refs/tags/v1.2.3" in commands
+    assert "git rev-parse v1.2.3^{commit}" in commands
+    assert not any(command.startswith("gh release create") for command in commands)
+    assert not any(command.startswith("gh release upload") for command in commands)
+    assert not any(command.startswith("git push") for command in commands)
 
 
 def test_existing_release_rejects_mismatched_tag_commit(tmp_path: Path) -> None:
