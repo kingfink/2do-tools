@@ -21,10 +21,10 @@ Then add 2Do Tools to your client:
 | Client | Simplest install |
 | --- | --- |
 | Claude Code | `claude plugin marketplace add kingfink/2do-tools` then `claude plugin install 2do@2do-tools` |
-| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.7.0 2do mcp serve` |
+| Codex | `codex mcp add 2do -- uvx --from git+https://github.com/kingfink/2do-tools@v0.8.0 2do mcp serve` |
 | Claude Desktop | Download `2do-tools.mcpb` from the [latest release](https://github.com/kingfink/2do-tools/releases/latest) and double-click it |
 
-All install paths run the same pinned `uvx` command under the hood, so no clone, virtualenv, or PATH setup is required. These install routes require `v0.7.0` or newer.
+All install paths run the same pinned `uvx` command under the hood, so no clone, virtualenv, or PATH setup is required. These install routes require `v0.8.0` or newer.
 
 For other MCP clients, use this config:
 
@@ -36,7 +36,7 @@ For other MCP clients, use this config:
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/kingfink/2do-tools@v0.7.0",
+        "git+https://github.com/kingfink/2do-tools@v0.8.0",
         "2do",
         "mcp",
         "serve"
@@ -49,7 +49,7 @@ For other MCP clients, use this config:
 Check the setup:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.7.0 2do doctor
+uvx --from git+https://github.com/kingfink/2do-tools@v0.8.0 2do doctor
 ```
 
 When updating, use the newest tag from the [latest release](https://github.com/kingfink/2do-tools/releases/latest). Update the pinned tag in your MCP config, run `claude plugin update 2do` for Claude Code plugin installs, or reinstall the latest Claude Desktop MCPB asset.
@@ -59,7 +59,7 @@ When updating, use the newest tag from the [latest release](https://github.com/k
 Install the CLI as a standalone command:
 
 ```bash
-uv tool install "git+https://github.com/kingfink/2do-tools@v0.7.0"
+uv tool install "git+https://github.com/kingfink/2do-tools@v0.8.0"
 uv tool update-shell
 ```
 
@@ -111,14 +111,14 @@ Direct mutation callbacks use a generated background URL handler under `~/Librar
 Remote connectors for Claude Cowork or ChatGPT are advanced private setups. A cloud-hosted client cannot reach a local stdio server directly, so you must run the Streamable HTTP transport and expose it through HTTPS plus real authentication. A secret or hard-to-guess tunnel URL is not authentication.
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.7.0 2do mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
+uvx --from git+https://github.com/kingfink/2do-tools@v0.8.0 2do mcp serve --transport streamable-http --host 127.0.0.1 --port 8765
 ```
 
 The local endpoint is `http://127.0.0.1:8765/mcp`. For copy-paste setup guidance:
 
 ```bash
-uvx --from git+https://github.com/kingfink/2do-tools@v0.7.0 2do mcp connect claude-cowork
-uvx --from git+https://github.com/kingfink/2do-tools@v0.7.0 2do mcp connect chatgpt
+uvx --from git+https://github.com/kingfink/2do-tools@v0.8.0 2do mcp connect claude-cowork
+uvx --from git+https://github.com/kingfink/2do-tools@v0.8.0 2do mcp connect chatgpt
 ```
 
 Related docs:
