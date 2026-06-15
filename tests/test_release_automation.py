@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import os
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -33,6 +35,108 @@ def assert_stable_uvx_args(args: list[str]) -> None:
     assert args == STABLE_UVX_ARGS
 
 
+def run_release_script(
+    tmp_path: Path,
+    *,
+    release_exists: bool,
+    release_commit: str = "release-commit",
+    tag_commit: str = "release-commit",
+    tag_resolution_fails: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    repo_root = tmp_path / "repo"
+    scripts_dir = repo_root / "scripts"
+    fake_bin = tmp_path / "bin"
+    scripts_dir.mkdir(parents=True)
+    fake_bin.mkdir()
+    (repo_root / "mcpb").mkdir()
+    (repo_root / "mcpb" / "manifest.json").write_text('{"version": "1.2.3"}')
+
+    release_script = scripts_dir / "release.sh"
+    release_script.write_text((REPO_ROOT / "scripts" / "release.sh").read_text())
+    release_script.chmod(0o755)
+
+    build_script = scripts_dir / "build-mcpb.sh"
+    build_script.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf 'build\\n' >> "$COMMAND_LOG"
+mkdir -p dist
+: > dist/2do-tools.mcpb
+"""
+    )
+    build_script.chmod(0o755)
+
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf 'git %s\\n' "$*" >> "$COMMAND_LOG"
+if [[ "$1" == "status" && "${2:-}" == "--porcelain" ]]; then
+  exit 0
+fi
+if [[ "$1" == "rev-parse" && "${2:-}" == "HEAD" ]]; then
+  printf '%s\\n' "$RELEASE_COMMIT"
+  exit 0
+fi
+if [[ "$1" == "rev-parse" && "${2:-}" == "$RELEASE_TAG^{commit}" ]]; then
+  if [[ "$TAG_RESOLUTION_FAILS" == "1" ]]; then
+    exit 1
+  fi
+  printf '%s\\n' "$TAG_COMMIT"
+  exit 0
+fi
+if [[ "$1" == "push" ]]; then
+  exit 0
+fi
+printf 'Unexpected git command: %s\\n' "$*" >&2
+exit 2
+"""
+    )
+    fake_git.chmod(0o755)
+
+    fake_gh = fake_bin / "gh"
+    fake_gh.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf 'gh %s\\n' "$*" >> "$COMMAND_LOG"
+if [[ "$1" == "release" && "$2" == "view" ]]; then
+  [[ "$RELEASE_EXISTS" == "1" ]]
+  exit
+fi
+if [[ "$1" == "release" && "$2" == "create" ]]; then
+  exit 0
+fi
+if [[ "$1" == "release" && "$2" == "upload" ]]; then
+  exit 0
+fi
+printf 'Unexpected gh command: %s\\n' "$*" >&2
+exit 2
+"""
+    )
+    fake_gh.chmod(0o755)
+
+    command_log = tmp_path / "commands.log"
+    command_log.touch()
+    env = os.environ | {
+        "COMMAND_LOG": str(command_log),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "RELEASE_COMMIT": release_commit,
+        "RELEASE_EXISTS": "1" if release_exists else "0",
+        "RELEASE_TAG": "v1.2.3",
+        "TAG_COMMIT": tag_commit,
+        "TAG_RESOLUTION_FAILS": "1" if tag_resolution_fails else "0",
+    }
+    result = subprocess.run(
+        [str(release_script), "v1.2.3"],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result, command_log.read_text().splitlines()
+
+
 def test_prepare_release_stages_all_release_metadata_files() -> None:
     script = (REPO_ROOT / "scripts" / "prepare-release.sh").read_text()
 
@@ -53,13 +157,61 @@ def test_prepare_release_stages_all_release_metadata_files() -> None:
 
 def test_release_advances_stable_after_github_publication() -> None:
     script = (REPO_ROOT / "scripts" / "release.sh").read_text()
-    stable_push_position = script.find("git push origin HEAD:refs/heads/stable --force")
-    create_position = script.index('gh release create "$tag"')
-    upload_position = script.index('gh release upload "$tag"')
 
-    assert stable_push_position != -1
-    assert stable_push_position > create_position
-    assert stable_push_position > upload_position
+    assert 'git push origin "$release_commit:refs/heads/stable" --force' in script
+    assert "git push origin HEAD:refs/heads/stable --force" not in script
+
+
+def test_new_release_pushes_release_commit_to_stable_after_create(tmp_path: Path) -> None:
+    result, commands = run_release_script(tmp_path, release_exists=False)
+    assert result.returncode == 0, result.stderr
+
+    create_command = next(
+        command for command in commands if command.startswith("gh release create")
+    )
+    stable_push = "git push origin release-commit:refs/heads/stable --force"
+
+    assert "--target release-commit" in create_command
+    assert commands.index(create_command) < commands.index(stable_push)
+
+
+def test_existing_release_pushes_matching_release_commit_after_upload(tmp_path: Path) -> None:
+    result, commands = run_release_script(tmp_path, release_exists=True)
+    assert result.returncode == 0, result.stderr
+
+    upload_command = next(
+        command for command in commands if command.startswith("gh release upload")
+    )
+    stable_push = "git push origin release-commit:refs/heads/stable --force"
+
+    assert commands.index("git rev-parse v1.2.3^{commit}") < commands.index(upload_command)
+    assert commands.index(upload_command) < commands.index(stable_push)
+
+
+def test_existing_release_rejects_mismatched_tag_commit(tmp_path: Path) -> None:
+    result, commands = run_release_script(
+        tmp_path,
+        release_exists=True,
+        tag_commit="different-commit",
+    )
+
+    assert result.returncode != 0
+    assert "does not match current release commit" in result.stderr
+    assert not any(command.startswith("gh release upload") for command in commands)
+    assert not any(command.startswith("git push") for command in commands)
+
+
+def test_existing_release_requires_resolvable_local_tag(tmp_path: Path) -> None:
+    result, commands = run_release_script(
+        tmp_path,
+        release_exists=True,
+        tag_resolution_fails=True,
+    )
+
+    assert result.returncode != 0
+    assert "Unable to resolve local tag v1.2.3 to a commit" in result.stderr
+    assert not any(command.startswith("gh release upload") for command in commands)
+    assert not any(command.startswith("git push") for command in commands)
 
 
 def test_product_metadata_describes_reading_creating_and_completing_tasks() -> None:
