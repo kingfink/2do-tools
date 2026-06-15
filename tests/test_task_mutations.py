@@ -358,6 +358,7 @@ def test_complete_task_direct_opens_url_after_listener_starts() -> None:
         "task-123",
         open_url_fn=open_url,
         listener_factory=listener_factory,
+        prepare_callbacks_fn=lambda: None,
         timeout=7,
     )
 
@@ -367,9 +368,9 @@ def test_complete_task_direct_opens_url_after_listener_starts() -> None:
     assert opened_urls == [
         "twodo://x-callback-url/completetasks?"
         "uids=task-123"
-        "&x-success=http%3A%2F%2F127.0.0.1%3A1234%2Fcallback%2Ftoken%2Fsuccess"
-        "&x-error=http%3A%2F%2F127.0.0.1%3A1234%2Fcallback%2Ftoken%2Ferror"
-        "&x-cancel=http%3A%2F%2F127.0.0.1%3A1234%2Fcallback%2Ftoken%2Fcancel"
+        "&x-success=twodo-tools-callback%3A%2F%2F127.0.0.1%3A1234%2Fcallback%2Ftoken%2Fsuccess"
+        "&x-error=twodo-tools-callback%3A%2F%2F127.0.0.1%3A1234%2Fcallback%2Ftoken%2Ferror"
+        "&x-cancel=twodo-tools-callback%3A%2F%2F127.0.0.1%3A1234%2Fcallback%2Ftoken%2Fcancel"
         "&x-source=2Do%20Tools"
     ]
 
@@ -391,6 +392,7 @@ def test_complete_task_direct_returns_failed_when_2do_cannot_open() -> None:
         "task-123",
         open_url_fn=fail_to_open,
         listener_factory=lambda _uid: listener,
+        prepare_callbacks_fn=lambda: None,
     )
 
     assert result.status is task_mutations.TaskCompletionStatus.FAILED
@@ -424,6 +426,7 @@ def test_create_task_direct_opens_url_after_listener_starts() -> None:
         ),
         open_url_fn=open_url,
         listener_factory=lambda: listener,
+        prepare_callbacks_fn=lambda: None,
         timeout=7,
     )
 
@@ -431,7 +434,7 @@ def test_create_task_direct_opens_url_after_listener_starts() -> None:
     assert listener.wait_timeout == 7
     assert len(opened_urls) == 1
     assert "task=Buy%20milk" in opened_urls[0]
-    assert "x-success=http%3A%2F%2F127.0.0.1" in opened_urls[0]
+    assert "x-success=twodo-tools-callback%3A%2F%2F127.0.0.1" in opened_urls[0]
     assert "token" not in result.task_url
 
 
@@ -452,6 +455,7 @@ def test_create_task_direct_returns_failed_when_2do_cannot_open() -> None:
         TaskDraft(title="Buy milk", list_name="Inbox"),
         open_url_fn=fail_to_open,
         listener_factory=lambda: listener,
+        prepare_callbacks_fn=lambda: None,
     )
 
     assert result.status is TaskCreationStatus.FAILED
@@ -470,6 +474,7 @@ def test_create_task_direct_returns_failed_when_callback_listener_cannot_start()
     result = create_task_direct(
         TaskDraft(title="Buy milk", list_name="Inbox"),
         listener_factory=BrokenListener,
+        prepare_callbacks_fn=lambda: None,
     )
 
     assert result.status is TaskCreationStatus.FAILED
@@ -487,10 +492,24 @@ def test_create_task_direct_returns_failed_when_callback_wait_errors() -> None:
         TaskDraft(title="Buy milk", list_name="Inbox"),
         open_url_fn=lambda _url: None,
         listener_factory=lambda: listener,
+        prepare_callbacks_fn=lambda: None,
     )
 
     assert result.status is TaskCreationStatus.FAILED
     assert result.message == "Could not receive 2Do callback: callback connection failed"
+
+
+def test_create_task_direct_fails_when_background_callback_helper_cannot_start() -> None:
+    def fail_to_prepare() -> None:
+        raise OSError("helper unavailable")
+
+    result = create_task_direct(
+        TaskDraft(title="Buy milk", list_name="Inbox"),
+        prepare_callbacks_fn=fail_to_prepare,
+    )
+
+    assert result.status is TaskCreationStatus.FAILED
+    assert result.message == "Could not prepare background callback handler: helper unavailable"
 
 
 def _created_result_for_test() -> TaskCreationResult:

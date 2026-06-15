@@ -104,6 +104,8 @@ The local backup may contain task titles, notes, list names, tags, timestamps, a
 
 The `open_*` tools launch `twodo://` URLs on the Mac running the MCP server. If you expose the server through a remote connector, remote clients that can call those tools can also bring 2Do to the front or open task/list/search views on that Mac. Quick Entry opens an editor on that Mac. Direct task creation and completion always require either MCP elicitation or a native confirmation dialog on that Mac.
 
+Direct mutation callbacks use a generated background URL handler under `~/Library/Application Support/2do-tools/` so 2Do can report success, errors, or cancellation without opening a browser tab.
+
 ## Remote Connectors
 
 Remote connectors for Claude Cowork or ChatGPT are advanced private setups. A cloud-hosted client cannot reach a local stdio server directly, so you must run the Streamable HTTP transport and expose it through HTTPS plus real authentication. A secret or hard-to-guess tunnel URL is not authentication.

@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, field_validator, model_validator
 
+from .callback_helper import background_callback_url, ensure_callback_helper
 from .url_schemes import add_task_url, complete_task_url, open_url, show_task_url
 
 ResultT = TypeVar("ResultT")
@@ -443,8 +444,14 @@ def _run_callback_flow(
     fail: Callable[[str], ResultT],
     *,
     open_url_fn: Callable[[str], None],
+    prepare_callbacks_fn: Callable[[], None],
     timeout: float,
 ) -> ResultT:
+    try:
+        prepare_callbacks_fn()
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        return fail(f"Could not prepare background callback handler: {exc}")
+
     try:
         with listener_factory() as listener:
             try:
@@ -467,6 +474,7 @@ def complete_task_direct(
     listener_factory: Callable[[str], TaskCompletionCallbackListener] = (
         TaskCompletionCallbackListener
     ),
+    prepare_callbacks_fn: Callable[[], None] = ensure_callback_helper,
     timeout: float = 30.0,
 ) -> TaskCompletionResult:
     task_url = show_task_url(uid)
@@ -483,12 +491,13 @@ def complete_task_direct(
         lambda: listener_factory(uid),
         lambda listener: complete_task_url(
             uid=uid,
-            success_url=listener.success_url,
-            error_url=listener.error_url,
-            cancel_url=listener.cancel_url,
+            success_url=background_callback_url(listener.success_url),
+            error_url=background_callback_url(listener.error_url),
+            cancel_url=background_callback_url(listener.cancel_url),
         ),
         fail,
         open_url_fn=open_url_fn,
+        prepare_callbacks_fn=prepare_callbacks_fn,
         timeout=timeout,
     )
 
@@ -498,6 +507,7 @@ def create_task_direct(
     *,
     open_url_fn: Callable[[str], None] = open_url,
     listener_factory: Callable[[], TaskCreationCallbackListener] = TaskCreationCallbackListener,
+    prepare_callbacks_fn: Callable[[], None] = ensure_callback_helper,
     timeout: float = 30.0,
 ) -> TaskCreationResult:
     def fail(message: str) -> TaskCreationResult:
@@ -512,11 +522,12 @@ def create_task_direct(
             due_date=draft.due_date,
             tags=draft.tags,
             repeat=draft.repeat.url_value if draft.repeat is not None else None,
-            success_url=listener.success_url,
-            error_url=listener.error_url,
-            cancel_url=listener.cancel_url,
+            success_url=background_callback_url(listener.success_url),
+            error_url=background_callback_url(listener.error_url),
+            cancel_url=background_callback_url(listener.cancel_url),
         ),
         fail,
         open_url_fn=open_url_fn,
+        prepare_callbacks_fn=prepare_callbacks_fn,
         timeout=timeout,
     )
