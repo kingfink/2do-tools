@@ -39,26 +39,56 @@ if [[ "$tag" != "v$manifest_version" ]]; then
   echo "Warning: tag $tag does not match mcpb/manifest.json version $manifest_version" >&2
 fi
 
+release_commit="$(git rev-parse HEAD)"
+
+verify_release_tag() {
+  local tag_commit
+
+  if ! git fetch --force origin "refs/tags/$tag:refs/tags/$tag"; then
+    echo "Unable to fetch release tag $tag from origin." >&2
+    exit 1
+  fi
+  if ! tag_commit="$(git rev-parse "$tag^{commit}")"; then
+    echo "Unable to resolve local tag $tag to a commit after fetching it." >&2
+    exit 1
+  fi
+  if [[ "$tag_commit" != "$release_commit" ]]; then
+    echo "Release tag $tag commit $tag_commit does not match current release commit $release_commit." >&2
+    exit 1
+  fi
+}
+
 echo "Building MCPB bundle..."
 scripts/build-mcpb.sh
 
 echo "Creating GitHub release $tag with the bundle attached..."
 if gh release view "$tag" >/dev/null 2>&1; then
+  verify_release_tag
+
   # Release already exists (e.g. retrying after a failure) — just refresh the
   # bundle asset rather than recreating the release.
   echo "Release $tag already exists; refreshing the bundle asset."
   gh release upload "$tag" "$repo_root/dist/2do-tools.mcpb" --clobber
 else
+  remote_tag="$(git ls-remote --tags origin "refs/tags/$tag")"
+  if [[ -n "$remote_tag" ]]; then
+    verify_release_tag
+  fi
+
   # Let gh create the tag at the current commit as part of publishing the
   # release (--target). The tag is created on the remote ONLY when the release
-  # succeeds, so a failed run never leaves a dangling tag behind, and there is
-  # no local tag to get out of sync. Do not pre-create a local tag: gh refuses
-  # to publish if a same-named local tag exists but has not been pushed.
+  # succeeds, so a failed run never leaves a dangling tag behind. Do not
+  # pre-create a local tag: gh refuses to publish if a same-named local tag
+  # exists but has not been pushed.
   gh release create "$tag" \
     "$repo_root/dist/2do-tools.mcpb" \
     --title "2do-tools $tag" \
     --generate-notes \
-    --target "$(git rev-parse HEAD)"
+    --target "$release_commit"
+  verify_release_tag
 fi
 
-echo "Done. Release $tag published with dist/2do-tools.mcpb attached."
+echo "Updating stable branch to $tag..."
+git push origin "$release_commit:refs/heads/stable" --force
+
+echo "Done. Release $tag published, stable updated, and dist/2do-tools.mcpb attached."
