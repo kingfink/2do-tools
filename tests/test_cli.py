@@ -6,6 +6,8 @@ import pytest
 from _2do_tools import cli, server
 from _2do_tools.task_creation import (
     RepeatPreset,
+    TaskCompletionResult,
+    TaskCompletionStatus,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDraft,
@@ -558,5 +560,116 @@ def test_2do_task_create_prints_failure_to_stderr(
 def test_2do_task_create_has_no_confirmation_bypass() -> None:
     with pytest.raises(SystemExit) as exc_info:
         cli.main(["task", "create", "Buy milk", "--yes"])
+
+    assert exc_info.value.code == 2
+
+
+def test_2do_task_complete_confirms_and_prints_completed_task(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    task = _task()
+    requested_uids: list[str] = []
+    completed_uids: list[str] = []
+
+    def require_open_task(uid: str) -> server.Task:
+        requested_uids.append(uid)
+        return task
+
+    monkeypatch.setattr(cli.server, "_require_open_task", require_open_task)
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
+    monkeypatch.setattr(
+        cli,
+        "complete_task_direct",
+        lambda uid: (
+            completed_uids.append(uid)
+            or TaskCompletionResult(
+                status=TaskCompletionStatus.COMPLETED,
+                uid=uid,
+                task_url=f"twodo://x-callback-url/showtask?uid={uid}",
+                message="Completed task.",
+            )
+        ),
+    )
+
+    assert cli.main(["task", "complete", "task-active"]) == 0
+
+    assert requested_uids == ["task-active"]
+    assert completed_uids == ["task-active"]
+    assert capsys.readouterr().out == (
+        "Title: Active task\n"
+        "List: Inbox\n"
+        "UID: task-active\n"
+        "Completed task task-active - "
+        "twodo://x-callback-url/showtask?uid=task-active\n"
+    )
+
+
+@pytest.mark.parametrize("answer", ["", "n", "nope"])
+def test_2do_task_complete_cancels_for_non_affirmative_answer(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    answer: str,
+) -> None:
+    monkeypatch.setattr(cli.server, "_require_open_task", lambda _uid: _task())
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: answer)
+    monkeypatch.setattr(
+        cli,
+        "complete_task_direct",
+        lambda _uid: pytest.fail("task should not be completed"),
+    )
+
+    assert cli.main(["task", "complete", "task-active"]) == 0
+
+    assert capsys.readouterr().out.endswith("Task completion cancelled.\n")
+
+
+def test_2do_task_complete_cancels_for_non_interactive_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.server, "_require_open_task", lambda _uid: _task())
+    monkeypatch.setattr(cli.sys, "stdin", _NonInteractiveStdin())
+    monkeypatch.setattr(
+        cli,
+        "complete_task_direct",
+        lambda _uid: pytest.fail("task should not be completed"),
+    )
+
+    assert cli.main(["task", "complete", "task-active"]) == 0
+
+    assert capsys.readouterr().out.endswith("Task completion cancelled.\n")
+
+
+def test_2do_task_complete_prints_failure_to_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.server, "_require_open_task", lambda _uid: _task())
+    monkeypatch.setattr(cli.sys, "stdin", _InteractiveStdin())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    monkeypatch.setattr(
+        cli,
+        "complete_task_direct",
+        lambda uid: TaskCompletionResult(
+            status=TaskCompletionStatus.FAILED,
+            uid=uid,
+            task_url=f"twodo://x-callback-url/showtask?uid={uid}",
+            message="2Do could not complete the task.",
+        ),
+    )
+
+    assert cli.main(["task", "complete", "task-active"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith("Title: Active task\n")
+    assert captured.err == "2Do could not complete the task.\n"
+
+
+def test_2do_task_complete_has_no_confirmation_bypass() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["task", "complete", "task-active", "--yes"])
 
     assert exc_info.value.code == 2

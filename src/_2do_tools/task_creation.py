@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, field_validator, model_validator
 
-from .url_schemes import add_task_url, open_url, show_task_url
+from .url_schemes import add_task_url, complete_task_url, open_url, show_task_url
 
 
 class RepeatPreset(StrEnum):
@@ -103,6 +103,19 @@ class TaskCreationResult(BaseModel):
     message: str
 
 
+class TaskCompletionStatus(StrEnum):
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class TaskCompletionResult(BaseModel):
+    status: TaskCompletionStatus
+    uid: str | None = None
+    task_url: str | None = None
+    message: str
+
+
 class ConfirmationStatus(StrEnum):
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
@@ -116,10 +129,11 @@ class ConfirmationResult(BaseModel):
 
 NATIVE_CONFIRM_SCRIPT = (
     "on run argv\n"
-    "    set taskPreview to item 1 of argv\n"
+    "    set actionPreview to item 1 of argv\n"
+    "    set actionLabel to item 2 of argv\n"
     "    try\n"
-    '        display dialog taskPreview with title "2Do Tools" '
-    'buttons {"Cancel", "Create"} default button "Create" '
+    '        display dialog actionPreview with title "2Do Tools" '
+    'buttons {"Cancel", actionLabel} default button actionLabel '
     'cancel button "Cancel"\n'
     '        return "confirmed"\n'
     "    on error number -128\n"
@@ -148,9 +162,26 @@ def confirm_task_native(
     *,
     run_fn: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> ConfirmationResult:
+    return confirm_action_native(
+        task_preview(draft),
+        action="Create",
+        operation="creation",
+        run_fn=run_fn,
+    )
+
+
+def confirm_action_native(
+    preview: str,
+    *,
+    action: str,
+    operation: str | None = None,
+    run_fn: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> ConfirmationResult:
+    operation_name = operation or action.casefold()
+
     try:
         completed = run_fn(
-            ["osascript", "-e", NATIVE_CONFIRM_SCRIPT, task_preview(draft)],
+            ["osascript", "-e", NATIVE_CONFIRM_SCRIPT, preview, action],
             check=False,
             capture_output=True,
             text=True,
@@ -172,12 +203,12 @@ def confirm_task_native(
     if response == "confirmed":
         return ConfirmationResult(
             status=ConfirmationStatus.CONFIRMED,
-            message="Task creation confirmed.",
+            message=f"Task {operation_name} confirmed.",
         )
     if response == "cancelled":
         return ConfirmationResult(
             status=ConfirmationStatus.CANCELLED,
-            message="Task creation cancelled.",
+            message=f"Task {operation_name} cancelled.",
         )
 
     return ConfirmationResult(
@@ -229,15 +260,18 @@ class TaskCallbackListener:
             server.handle_request()
 
         if self._result is None:
-            return TaskCreationResult(
-                status=TaskCreationStatus.FAILED,
-                message=(
-                    "Timed out waiting for 2Do. Task creation may have succeeded; "
-                    "check 2Do before retrying."
-                ),
-            )
+            return self._timeout_result()
 
         return self._result
+
+    def _timeout_result(self) -> TaskCreationResult:
+        return TaskCreationResult(
+            status=TaskCreationStatus.FAILED,
+            message=(
+                "Timed out waiting for 2Do. Task creation may have succeeded; "
+                "check 2Do before retrying."
+            ),
+        )
 
     def _require_server(self) -> HTTPServer:
         if self._server is None:
@@ -316,6 +350,114 @@ class TaskCallbackListener:
             )
 
         return None
+
+
+class TaskCompletionCallbackListener(TaskCallbackListener):
+    def __init__(self, uid: str) -> None:
+        super().__init__()
+        self._uid = uid
+
+    def _parse_callback(self, path: str, query: str) -> TaskCompletionResult | None:
+        expected_prefix = f"/callback/{self._token}/"
+        if not path.startswith(expected_prefix):
+            return None
+
+        callback_kind = path.removeprefix(expected_prefix)
+        query_params = parse_qs(query, keep_blank_values=True)
+
+        if callback_kind == "success":
+            return TaskCompletionResult(
+                status=TaskCompletionStatus.COMPLETED,
+                uid=self._uid,
+                task_url=show_task_url(self._uid),
+                message="Completed task.",
+            )
+
+        if callback_kind == "error":
+            error_message = next(
+                (
+                    query_params[name][0].strip()
+                    for name in ("errorMessage", "error-message", "message")
+                    if query_params.get(name) and query_params[name][0].strip()
+                ),
+                "Unknown error.",
+            )
+            return TaskCompletionResult(
+                status=TaskCompletionStatus.FAILED,
+                uid=self._uid,
+                task_url=show_task_url(self._uid),
+                message=f"2Do could not complete the task: {error_message}",
+            )
+
+        if callback_kind == "cancel":
+            return TaskCompletionResult(
+                status=TaskCompletionStatus.CANCELLED,
+                uid=self._uid,
+                task_url=show_task_url(self._uid),
+                message="Task completion cancelled.",
+            )
+
+        return None
+
+    def _timeout_result(self) -> TaskCompletionResult:
+        return TaskCompletionResult(
+            status=TaskCompletionStatus.FAILED,
+            uid=self._uid,
+            task_url=show_task_url(self._uid),
+            message=(
+                "Timed out waiting for 2Do. Task completion may have succeeded; "
+                "check 2Do before retrying."
+            ),
+        )
+
+
+def complete_task_direct(
+    uid: str,
+    *,
+    open_url_fn: Callable[[str], None] = open_url,
+    listener_factory: Callable[[str], TaskCompletionCallbackListener] = (
+        TaskCompletionCallbackListener
+    ),
+    timeout: float = 30.0,
+) -> TaskCompletionResult:
+    task_url = show_task_url(uid)
+
+    try:
+        listener_context = listener_factory(uid)
+        with listener_context as listener:
+            url = complete_task_url(
+                uid=uid,
+                success_url=listener.success_url,
+                error_url=listener.error_url,
+                cancel_url=listener.cancel_url,
+            )
+
+            try:
+                open_url_fn(url)
+            except (OSError, subprocess.SubprocessError) as exc:
+                return TaskCompletionResult(
+                    status=TaskCompletionStatus.FAILED,
+                    uid=uid,
+                    task_url=task_url,
+                    message=f"Could not open 2Do: {exc}",
+                )
+
+            try:
+                return listener.wait(timeout)
+            except (OSError, RuntimeError) as exc:
+                return TaskCompletionResult(
+                    status=TaskCompletionStatus.FAILED,
+                    uid=uid,
+                    task_url=task_url,
+                    message=f"Could not receive 2Do callback: {exc}",
+                )
+    except (OSError, RuntimeError) as exc:
+        return TaskCompletionResult(
+            status=TaskCompletionStatus.FAILED,
+            uid=uid,
+            task_url=task_url,
+            message=f"Could not start task callback listener: {exc}",
+        )
 
 
 def create_task_direct(

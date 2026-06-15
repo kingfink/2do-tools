@@ -17,9 +17,13 @@ from .storage import backups_db_dir, backups_db_path
 from .task_creation import (
     ConfirmationStatus,
     RepeatPreset,
+    TaskCompletionResult,
+    TaskCompletionStatus,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDraft,
+    complete_task_direct,
+    confirm_action_native,
     confirm_task_native,
     create_task_direct,
     task_preview,
@@ -33,7 +37,8 @@ MCP_INSTRUCTIONS = (
     "URLs. open_task/open_list/open_search only open views on the Mac running the server; use "
     "them when the user asks to open something. open_task_quick_entry opens a pre-filled editor "
     "that the user must save in 2Do. create_task creates directly only after MCP elicitation or "
-    "native confirmation on the host Mac. Run refresh_backup_db if results look stale."
+    "native confirmation on the host Mac. complete_task completes exactly one existing task after "
+    "the same confirmation. Run refresh_backup_db if results look stale."
 )
 
 mcp = FastMCP("2Do", instructions=MCP_INSTRUCTIONS)
@@ -154,6 +159,7 @@ class TaskFilters:
     include_deleted: bool = False
     include_archived: bool = False
     completed: bool | None = None
+    task_uid: str | None = None
     list_id: str | None = None
     list_name: str | None = None
     tag_id: str | None = None
@@ -332,6 +338,10 @@ def _build_where_clause(filters: TaskFilters) -> tuple[str, list[object]]:
     if filters.completed is not None:
         clauses.append("t.iscompleted = ?")
         params.append(1 if filters.completed else 0)
+
+    if filters.task_uid is not None:
+        clauses.append("t.uid = ?")
+        params.append(filters.task_uid)
 
     if filters.list_id is not None:
         clauses.append("t.calendaruid = ?")
@@ -611,6 +621,30 @@ def _get_tasks(filters: TaskFilters) -> list[Task]:
         ).fetchall()
 
         return [_task_from_row(row, tags_by_id) for row in rows]
+
+
+def _get_task(uid: str) -> Task | None:
+    tasks = _get_tasks(
+        TaskFilters(
+            include_archived=True,
+            task_uid=uid,
+            limit=1,
+        )
+    )
+    return tasks[0] if tasks else None
+
+
+def _require_open_task(uid: str) -> Task:
+    task = _get_task(uid)
+    if task is None:
+        raise ValueError(f"2Do task not found: {uid}")
+    if task.completed:
+        raise ValueError(f"Task is already complete: {task.title}")
+    return task
+
+
+def task_completion_preview(task: Task) -> str:
+    return f"Title: {task.title}\nList: {task.list.name}\nUID: {task.uuid}"
 
 
 def ensure_backup_db_current(*, now: datetime | None = None) -> None:
@@ -1091,6 +1125,66 @@ async def create_task(
             )
 
     return await asyncio.to_thread(create_task_direct, draft)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+async def complete_task(ctx: Context, uid: str) -> TaskCompletionResult:
+    """Complete one existing 2Do task after explicit user confirmation."""
+    task = _require_open_task(uid)
+    preview = task_completion_preview(task)
+
+    if _supports_form_elicitation(ctx):
+        try:
+            response = await ctx.elicit(
+                preview,
+                bool,
+                response_title="Complete this task?",
+            )
+        except Exception as exc:
+            return TaskCompletionResult(
+                status=TaskCompletionStatus.FAILED,
+                uid=task.uuid,
+                task_url=task.url,
+                message=f"Could not confirm task completion: {exc}",
+            )
+
+        if not isinstance(response, AcceptedElicitation) or response.data is not True:
+            return TaskCompletionResult(
+                status=TaskCompletionStatus.CANCELLED,
+                uid=task.uuid,
+                task_url=task.url,
+                message="Task completion cancelled.",
+            )
+    else:
+        confirmation = await asyncio.to_thread(
+            confirm_action_native,
+            preview,
+            action="Complete",
+            operation="completion",
+        )
+        if confirmation.status is ConfirmationStatus.CANCELLED:
+            return TaskCompletionResult(
+                status=TaskCompletionStatus.CANCELLED,
+                uid=task.uuid,
+                task_url=task.url,
+                message=confirmation.message,
+            )
+        if confirmation.status is ConfirmationStatus.FAILED:
+            return TaskCompletionResult(
+                status=TaskCompletionStatus.FAILED,
+                uid=task.uuid,
+                task_url=task.url,
+                message=confirmation.message,
+            )
+
+    return await asyncio.to_thread(complete_task_direct, task.uuid)
 
 
 @mcp.tool()

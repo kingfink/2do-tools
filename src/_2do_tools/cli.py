@@ -8,7 +8,9 @@ from . import render, server
 from .storage import backups_db_dir, backups_db_path
 from .task_creation import (
     RepeatPreset,
+    TaskCompletionStatus,
     TaskCreationStatus,
+    complete_task_direct,
     create_task_direct,
     task_preview,
 )
@@ -114,6 +116,11 @@ def _main(argv: list[str] | None, *, prog: str) -> int:
     )
     task_open_parser = task_subparsers.add_parser("open", help="Open a 2Do task by UID.")
     task_open_parser.add_argument("uid")
+    task_complete_parser = task_subparsers.add_parser(
+        "complete",
+        help="Complete one 2Do task after terminal confirmation.",
+    )
+    task_complete_parser.add_argument("uid")
     task_quick_entry_parser = task_subparsers.add_parser(
         "quick-entry",
         help="Open a pre-filled Quick Entry editor in 2Do.",
@@ -183,6 +190,9 @@ def _main(argv: list[str] | None, *, prog: str) -> int:
 
         if args.task_command == "open":
             return _open_task(args)
+
+        if args.task_command == "complete":
+            return _complete_task(args)
 
         if args.task_command == "quick-entry":
             return _open_task_quick_entry(args)
@@ -336,6 +346,35 @@ def _open_task(args: argparse.Namespace) -> int:
     result = server.open_task(args.uid)
     print(result.url)
     return 0
+
+
+def _complete_task(args: argparse.Namespace) -> int:
+    task = server._require_open_task(args.uid)
+    print(server.task_completion_preview(task))
+
+    if not sys.stdin.isatty():
+        print("Task completion cancelled.")
+        return 0
+
+    try:
+        answer = input("Complete this task? [y/N] ")
+    except EOFError:
+        answer = ""
+
+    if answer.strip().casefold() not in {"y", "yes"}:
+        print("Task completion cancelled.")
+        return 0
+
+    result = complete_task_direct(task.uuid)
+    if result.status is TaskCompletionStatus.COMPLETED:
+        print(f"Completed task {result.uid} - {result.task_url}")
+        return 0
+    if result.status is TaskCompletionStatus.CANCELLED:
+        print(result.message)
+        return 0
+
+    print(result.message, file=sys.stderr)
+    return 1
 
 
 def _open_task_quick_entry(args: argparse.Namespace) -> int:

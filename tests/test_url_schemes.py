@@ -1,5 +1,7 @@
 from datetime import date
 
+import pytest
+
 import _2do_tools.url_schemes as url_schemes
 
 
@@ -67,6 +69,32 @@ def test_add_task_url_encodes_callbacks_and_omits_absent_fields() -> None:
         "&x-cancel=http%3A%2F%2F127.0.0.1%3A8000%2Fcancel%2Ftoken"
         "&x-source=2Do%20Tools"
     )
+
+
+def test_complete_task_url_encodes_one_uid_and_callbacks() -> None:
+    assert url_schemes.complete_task_url(
+        uid="task 123/abc?",
+        success_url="http://127.0.0.1:8000/success/token",
+        error_url="http://127.0.0.1:8000/error/token",
+        cancel_url="http://127.0.0.1:8000/cancel/token",
+    ) == (
+        "twodo://x-callback-url/completetasks?"
+        "uids=task%20123%2Fabc%3F"
+        "&x-success=http%3A%2F%2F127.0.0.1%3A8000%2Fsuccess%2Ftoken"
+        "&x-error=http%3A%2F%2F127.0.0.1%3A8000%2Ferror%2Ftoken"
+        "&x-cancel=http%3A%2F%2F127.0.0.1%3A8000%2Fcancel%2Ftoken"
+        "&x-source=2Do%20Tools"
+    )
+
+
+def test_complete_task_url_rejects_multiple_uids() -> None:
+    with pytest.raises(ValueError, match="exactly one task UID"):
+        url_schemes.complete_task_url(
+            uid="task-123,task-456",
+            success_url="http://127.0.0.1:8000/success/token",
+            error_url="http://127.0.0.1:8000/error/token",
+            cancel_url="http://127.0.0.1:8000/cancel/token",
+        )
 
 
 def test_open_url_launches_macos_url_scheme(monkeypatch) -> None:

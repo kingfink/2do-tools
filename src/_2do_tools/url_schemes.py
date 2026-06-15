@@ -68,5 +68,27 @@ def add_task_url(
     return _url("add", params)
 
 
+def complete_task_url(
+    *,
+    uid: str,
+    success_url: str,
+    error_url: str,
+    cancel_url: str,
+) -> str:
+    if not uid.strip() or "," in uid:
+        raise ValueError("completion requires exactly one task UID")
+
+    return _url(
+        "completetasks",
+        {
+            "uids": uid,
+            "x-success": success_url,
+            "x-error": error_url,
+            "x-cancel": cancel_url,
+            "x-source": "2Do Tools",
+        },
+    )
+
+
 def open_url(url: str) -> None:
     subprocess.run(["open", url], check=True)

@@ -3,8 +3,8 @@
   "name": "2do-tools",
   "display_name": "2Do Tools",
   "version": "0.7.0",
-  "description": "Read and create tasks in the local 2Do macOS app.",
-  "long_description": "A local MCP server for reading tasks from a read-only backup and creating confirmed tasks through the 2Do macOS app.",
+  "description": "Read, create, and complete tasks in the local 2Do macOS app.",
+  "long_description": "A local MCP server for reading tasks from a read-only backup and creating or completing confirmed tasks through the 2Do macOS app.",
   "author": {
     "name": "Tim Finkel",
     "url": "https://github.com/kingfink"
@@ -86,6 +86,10 @@
     {
       "name": "create_task",
       "description": "Create a 2Do task after explicit user confirmation."
+    },
+    {
+      "name": "complete_task",
+      "description": "Complete one existing 2Do task after explicit user confirmation."
     },
     {
       "name": "refresh_backup_db",

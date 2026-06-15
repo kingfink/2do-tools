@@ -2,7 +2,7 @@
   "name": "2do",
   "displayName": "2Do",
   "version": "0.1.0",
-  "description": "Read and create tasks in the local 2Do macOS app.",
+  "description": "Read, create, and complete tasks in the local 2Do macOS app.",
   "author": {
     "name": "Tim Finkel",
     "url": "https://github.com/kingfink"
