@@ -437,7 +437,7 @@ def test_2do_task_create_confirms_and_prints_created_task(
         {
             "title": "Buy milk",
             "notes": "Whole milk",
-            "list_name": "Inbox",
+            "list_name": None,
             "due_date": date(2026, 6, 20),
             "tags": ["Home"],
             "repeat": RepeatPreset.WEEKLY,

@@ -1,16 +1,19 @@
 import secrets
 import subprocess
 import time
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import date
 from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Self
+from typing import Generic, Self, TypeVar
 from urllib.parse import parse_qs, urlparse
 
 from pydantic import BaseModel, field_validator, model_validator
 
 from .url_schemes import add_task_url, complete_task_url, open_url, show_task_url
+
+ResultT = TypeVar("ResultT")
 
 
 class RepeatPreset(StrEnum):
@@ -32,7 +35,7 @@ class RepeatPreset(StrEnum):
 class TaskDraft(BaseModel):
     title: str
     notes: str | None = None
-    list_name: str = "Inbox"
+    list_name: str
     due_date: date | None = None
     tags: list[str] | None = None
     repeat: RepeatPreset | None = None
@@ -127,17 +130,26 @@ class ConfirmationResult(BaseModel):
     message: str
 
 
+NATIVE_CONFIRM_TIMEOUT_SECONDS = 60
+
 NATIVE_CONFIRM_SCRIPT = (
     "on run argv\n"
     "    set actionPreview to item 1 of argv\n"
     "    set actionLabel to item 2 of argv\n"
+    "    set timeoutSeconds to item 3 of argv as integer\n"
     "    try\n"
-    '        display dialog actionPreview with title "2Do Tools" '
+    '        set dialogResult to display dialog actionPreview with title "2Do Tools" '
     'buttons {"Cancel", actionLabel} default button actionLabel '
-    'cancel button "Cancel"\n'
+    'cancel button "Cancel" giving up after timeoutSeconds\n'
+    "        if gave up of dialogResult then\n"
+    '            return "cancelled"\n'
+    "        end if\n"
     '        return "confirmed"\n'
-    "    on error number -128\n"
-    '        return "cancelled"\n'
+    "    on error errorMessage number errorNumber\n"
+    "        if errorNumber is -128 or errorNumber is -1712 then\n"
+    '            return "cancelled"\n'
+    "        end if\n"
+    "        error errorMessage number errorNumber\n"
     "    end try\n"
     "end run"
 )
@@ -175,13 +187,21 @@ def confirm_action_native(
     *,
     action: str,
     operation: str | None = None,
+    timeout_seconds: int = NATIVE_CONFIRM_TIMEOUT_SECONDS,
     run_fn: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> ConfirmationResult:
     operation_name = operation or action.casefold()
 
     try:
         completed = run_fn(
-            ["osascript", "-e", NATIVE_CONFIRM_SCRIPT, preview, action],
+            [
+                "osascript",
+                "-e",
+                NATIVE_CONFIRM_SCRIPT,
+                preview,
+                action,
+                str(timeout_seconds),
+            ],
             check=False,
             capture_output=True,
             text=True,
@@ -194,6 +214,11 @@ def confirm_action_native(
 
     if completed.returncode != 0:
         detail = completed.stderr.strip() or "unknown osascript error"
+        if "(-1712)" in detail:
+            return ConfirmationResult(
+                status=ConfirmationStatus.CANCELLED,
+                message=f"Task {operation_name} cancelled.",
+            )
         return ConfirmationResult(
             status=ConfirmationStatus.FAILED,
             message=f"Could not display confirmation: {detail}",
@@ -217,13 +242,24 @@ def confirm_action_native(
     )
 
 
-class TaskCallbackListener:
+def _callback_error_message(query_params: dict[str, list[str]]) -> str:
+    return next(
+        (
+            query_params[name][0].strip()
+            for name in ("errorMessage", "error-message", "message")
+            if query_params.get(name) and query_params[name][0].strip()
+        ),
+        "Unknown error.",
+    )
+
+
+class _CallbackListener(Generic[ResultT], ABC):
     def __init__(self) -> None:
         self._token = secrets.token_urlsafe(24)
         self._server: HTTPServer | None = None
-        self._result: TaskCreationResult | None = None
+        self._result: ResultT | None = None
 
-    def __enter__(self) -> "TaskCallbackListener":
+    def __enter__(self) -> Self:
         self._server = HTTPServer(("127.0.0.1", 0), self._handler_type())
         return self
 
@@ -248,7 +284,7 @@ class TaskCallbackListener:
     def cancel_url(self) -> str:
         return self._callback_url("cancel")
 
-    def wait(self, timeout: float) -> TaskCreationResult:
+    def wait(self, timeout: float) -> ResultT:
         server = self._require_server()
         deadline = time.monotonic() + timeout
 
@@ -263,15 +299,6 @@ class TaskCallbackListener:
             return self._timeout_result()
 
         return self._result
-
-    def _timeout_result(self) -> TaskCreationResult:
-        return TaskCreationResult(
-            status=TaskCreationStatus.FAILED,
-            message=(
-                "Timed out waiting for 2Do. Task creation may have succeeded; "
-                "check 2Do before retrying."
-            ),
-        )
 
     def _require_server(self) -> HTTPServer:
         if self._server is None:
@@ -307,14 +334,34 @@ class TaskCallbackListener:
 
         return CallbackHandler
 
-    def _parse_callback(self, path: str, query: str) -> TaskCreationResult | None:
+    def _parse_callback(self, path: str, query: str) -> ResultT | None:
         expected_prefix = f"/callback/{self._token}/"
         if not path.startswith(expected_prefix):
             return None
 
         callback_kind = path.removeprefix(expected_prefix)
         query_params = parse_qs(query, keep_blank_values=True)
+        return self._result_for_callback(callback_kind, query_params)
 
+    @abstractmethod
+    def _result_for_callback(
+        self,
+        callback_kind: str,
+        query_params: dict[str, list[str]],
+    ) -> ResultT | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def _timeout_result(self) -> ResultT:
+        raise NotImplementedError
+
+
+class TaskCreationCallbackListener(_CallbackListener[TaskCreationResult]):
+    def _result_for_callback(
+        self,
+        callback_kind: str,
+        query_params: dict[str, list[str]],
+    ) -> TaskCreationResult | None:
         if callback_kind == "success":
             uid = query_params.get("add", [""])[0].strip()
             if not uid:
@@ -330,17 +377,9 @@ class TaskCallbackListener:
             )
 
         if callback_kind == "error":
-            error_message = next(
-                (
-                    query_params[name][0].strip()
-                    for name in ("errorMessage", "error-message", "message")
-                    if query_params.get(name) and query_params[name][0].strip()
-                ),
-                "Unknown error.",
-            )
             return TaskCreationResult(
                 status=TaskCreationStatus.FAILED,
-                message=f"2Do could not create the task: {error_message}",
+                message=(f"2Do could not create the task: {_callback_error_message(query_params)}"),
             )
 
         if callback_kind == "cancel":
@@ -351,20 +390,26 @@ class TaskCallbackListener:
 
         return None
 
+    def _timeout_result(self) -> TaskCreationResult:
+        return TaskCreationResult(
+            status=TaskCreationStatus.FAILED,
+            message=(
+                "Timed out waiting for 2Do. Task creation may have succeeded; "
+                "check 2Do before retrying."
+            ),
+        )
 
-class TaskCompletionCallbackListener(TaskCallbackListener):
+
+class TaskCompletionCallbackListener(_CallbackListener[TaskCompletionResult]):
     def __init__(self, uid: str) -> None:
         super().__init__()
         self._uid = uid
 
-    def _parse_callback(self, path: str, query: str) -> TaskCompletionResult | None:
-        expected_prefix = f"/callback/{self._token}/"
-        if not path.startswith(expected_prefix):
-            return None
-
-        callback_kind = path.removeprefix(expected_prefix)
-        query_params = parse_qs(query, keep_blank_values=True)
-
+    def _result_for_callback(
+        self,
+        callback_kind: str,
+        query_params: dict[str, list[str]],
+    ) -> TaskCompletionResult | None:
         if callback_kind == "success":
             return TaskCompletionResult(
                 status=TaskCompletionStatus.COMPLETED,
@@ -374,19 +419,13 @@ class TaskCompletionCallbackListener(TaskCallbackListener):
             )
 
         if callback_kind == "error":
-            error_message = next(
-                (
-                    query_params[name][0].strip()
-                    for name in ("errorMessage", "error-message", "message")
-                    if query_params.get(name) and query_params[name][0].strip()
-                ),
-                "Unknown error.",
-            )
             return TaskCompletionResult(
                 status=TaskCompletionStatus.FAILED,
                 uid=self._uid,
                 task_url=show_task_url(self._uid),
-                message=f"2Do could not complete the task: {error_message}",
+                message=(
+                    f"2Do could not complete the task: {_callback_error_message(query_params)}"
+                ),
             )
 
         if callback_kind == "cancel":
@@ -464,7 +503,7 @@ def create_task_direct(
     draft: TaskDraft,
     *,
     open_url_fn: Callable[[str], None] = open_url,
-    listener_factory: Callable[[], TaskCallbackListener] = TaskCallbackListener,
+    listener_factory: Callable[[], TaskCreationCallbackListener] = (TaskCreationCallbackListener),
     timeout: float = 30.0,
 ) -> TaskCreationResult:
     try:

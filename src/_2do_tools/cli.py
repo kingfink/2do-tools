@@ -260,7 +260,7 @@ def _date_arg(value: str) -> date:
 def _add_task_creation_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("title")
     parser.add_argument("--notes")
-    parser.add_argument("--list", dest="list_name", default="Inbox")
+    parser.add_argument("--list", dest="list_name")
     parser.add_argument("--due", dest="due_date", type=_date_arg)
     parser.add_argument("--tag", dest="tags", action="append")
     parser.add_argument(

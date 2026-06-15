@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from .storage import backups_db_dir, backups_db_path
 from .task_creation import (
+    ConfirmationResult,
     ConfirmationStatus,
     RepeatPreset,
     TaskCompletionResult,
@@ -24,7 +25,6 @@ from .task_creation import (
     TaskDraft,
     complete_task_direct,
     confirm_action_native,
-    confirm_task_native,
     create_task_direct,
     task_preview,
 )
@@ -88,7 +88,14 @@ REQUIRED_BACKUP_COLUMNS = {
         "title",
         "uid",
     ],
-    "calendars": ["isarchived", "isdeleted", "title", "uid"],
+    "calendars": [
+        "isarchived",
+        "isdeleted",
+        "isinboxcal",
+        "parentuid",
+        "title",
+        "uid",
+    ],
     "tags": ["isdeleted", "tag", "uid"],
 }
 
@@ -452,6 +459,7 @@ def _get_lists() -> list[TaskList]:
               and uid != ''
               and coalesce(isdeleted, 0) = 0
               and coalesce(isarchived, 0) = 0
+              and parentuid in ('2DoCalGroupLists', '2DoCalGroupInbox')
             order by lower(coalesce(title, '')), uid
             """
         ).fetchall()
@@ -464,6 +472,32 @@ def _get_lists() -> list[TaskList]:
         )
         for row in rows
     ]
+
+
+def _get_inbox_list() -> TaskList:
+    with _connect() as connection:
+        row = connection.execute(
+            """
+            select
+                uid as list_id
+                , title as list_name
+            from calendars
+            where coalesce(isinboxcal, 0) = 1
+              and coalesce(isdeleted, 0) = 0
+            order by uid
+            limit 1
+            """
+        ).fetchone()
+
+    if row is None:
+        raise ValueError("2Do inbox list not found")
+
+    list_name = row["list_name"] or ""
+    return TaskList(
+        id=row["list_id"],
+        name=list_name,
+        url=show_list_url(list_name),
+    )
 
 
 def _resolve_list_name(name: str) -> str:
@@ -481,7 +515,10 @@ def _resolve_list_name(name: str) -> str:
     return name
 
 
-def _require_list_name(name: str) -> str:
+def _require_list_name(name: str | None) -> str:
+    if name is None:
+        return _get_inbox_list().name
+
     requested_name = name.casefold()
 
     for task_list in _get_lists():
@@ -494,20 +531,19 @@ def _require_list_name(name: str) -> str:
 def _task_draft(
     title: str,
     notes: str | None,
-    list_name: str,
+    list_name: str | None,
     due_date: date | None,
     tags: list[str] | None,
     repeat: RepeatPreset | None,
 ) -> TaskDraft:
-    draft = TaskDraft(
+    return TaskDraft(
         title=title,
         notes=notes,
-        list_name=list_name,
+        list_name=_require_list_name(list_name),
         due_date=due_date,
         tags=tags,
         repeat=repeat,
     )
-    return draft.model_copy(update={"list_name": _require_list_name(draft.list_name)})
 
 
 def _get_tags() -> list[Tag]:
@@ -1044,7 +1080,7 @@ def open_search(text: str) -> OpenedUrl:
 def open_task_quick_entry(
     title: str,
     notes: str | None = None,
-    list_name: str = "Inbox",
+    list_name: str | None = None,
     due_date: date | None = None,
     tags: list[str] | None = None,
     repeat: RepeatPreset | None = None,
@@ -1073,6 +1109,46 @@ def _supports_form_elicitation(ctx: Context) -> bool:
     return elicitation is not None and elicitation.form is not None
 
 
+async def _confirm(
+    ctx: Context,
+    preview: str,
+    *,
+    response_title: str,
+    action: str,
+    operation: str,
+) -> ConfirmationResult:
+    if _supports_form_elicitation(ctx):
+        try:
+            response = await ctx.elicit(
+                preview,
+                bool,
+                response_title=response_title,
+            )
+        except Exception as exc:
+            return ConfirmationResult(
+                status=ConfirmationStatus.FAILED,
+                message=f"Could not confirm task {operation}: {exc}",
+            )
+
+        if isinstance(response, AcceptedElicitation) and response.data is True:
+            return ConfirmationResult(
+                status=ConfirmationStatus.CONFIRMED,
+                message=f"Task {operation} confirmed.",
+            )
+
+        return ConfirmationResult(
+            status=ConfirmationStatus.CANCELLED,
+            message=f"Task {operation} cancelled.",
+        )
+
+    return await asyncio.to_thread(
+        confirm_action_native,
+        preview,
+        action=action,
+        operation=operation,
+    )
+
+
 @mcp.tool(
     annotations=ToolAnnotations(
         readOnlyHint=False,
@@ -1085,44 +1161,37 @@ async def create_task(
     ctx: Context,
     title: str,
     notes: str | None = None,
-    list_name: str = "Inbox",
+    list_name: str | None = None,
     due_date: date | None = None,
     tags: list[str] | None = None,
     repeat: RepeatPreset | None = None,
 ) -> TaskCreationResult:
     """Create a 2Do task after explicit user confirmation."""
-    draft = _task_draft(title, notes, list_name, due_date, tags, repeat)
-
-    if _supports_form_elicitation(ctx):
-        try:
-            response = await ctx.elicit(
-                task_preview(draft),
-                bool,
-                response_title="Create this task?",
-            )
-        except Exception as exc:
-            return TaskCreationResult(
-                status=TaskCreationStatus.FAILED,
-                message=f"Could not confirm task creation: {exc}",
-            )
-
-        if not isinstance(response, AcceptedElicitation) or response.data is not True:
-            return TaskCreationResult(
-                status=TaskCreationStatus.CANCELLED,
-                message="Task creation cancelled.",
-            )
-    else:
-        confirmation = await asyncio.to_thread(confirm_task_native, draft)
-        if confirmation.status is ConfirmationStatus.CANCELLED:
-            return TaskCreationResult(
-                status=TaskCreationStatus.CANCELLED,
-                message=confirmation.message,
-            )
-        if confirmation.status is ConfirmationStatus.FAILED:
-            return TaskCreationResult(
-                status=TaskCreationStatus.FAILED,
-                message=confirmation.message,
-            )
+    draft = await asyncio.to_thread(
+        _task_draft,
+        title=title,
+        notes=notes,
+        list_name=list_name,
+        due_date=due_date,
+        tags=tags,
+        repeat=repeat,
+    )
+    confirmation = await _confirm(
+        ctx,
+        task_preview(draft),
+        response_title="Create this task?",
+        action="Create",
+        operation="creation",
+    )
+    if confirmation.status is not ConfirmationStatus.CONFIRMED:
+        return TaskCreationResult(
+            status=(
+                TaskCreationStatus.CANCELLED
+                if confirmation.status is ConfirmationStatus.CANCELLED
+                else TaskCreationStatus.FAILED
+            ),
+            message=confirmation.message,
+        )
 
     return await asyncio.to_thread(create_task_direct, draft)
 
@@ -1137,52 +1206,26 @@ async def create_task(
 )
 async def complete_task(ctx: Context, uid: str) -> TaskCompletionResult:
     """Complete one existing 2Do task after explicit user confirmation."""
-    task = _require_open_task(uid)
+    task = await asyncio.to_thread(_require_open_task, uid)
     preview = task_completion_preview(task)
-
-    if _supports_form_elicitation(ctx):
-        try:
-            response = await ctx.elicit(
-                preview,
-                bool,
-                response_title="Complete this task?",
-            )
-        except Exception as exc:
-            return TaskCompletionResult(
-                status=TaskCompletionStatus.FAILED,
-                uid=task.uuid,
-                task_url=task.url,
-                message=f"Could not confirm task completion: {exc}",
-            )
-
-        if not isinstance(response, AcceptedElicitation) or response.data is not True:
-            return TaskCompletionResult(
-                status=TaskCompletionStatus.CANCELLED,
-                uid=task.uuid,
-                task_url=task.url,
-                message="Task completion cancelled.",
-            )
-    else:
-        confirmation = await asyncio.to_thread(
-            confirm_action_native,
-            preview,
-            action="Complete",
-            operation="completion",
+    confirmation = await _confirm(
+        ctx,
+        preview,
+        response_title="Complete this task?",
+        action="Complete",
+        operation="completion",
+    )
+    if confirmation.status is not ConfirmationStatus.CONFIRMED:
+        return TaskCompletionResult(
+            status=(
+                TaskCompletionStatus.CANCELLED
+                if confirmation.status is ConfirmationStatus.CANCELLED
+                else TaskCompletionStatus.FAILED
+            ),
+            uid=task.uuid,
+            task_url=task.url,
+            message=confirmation.message,
         )
-        if confirmation.status is ConfirmationStatus.CANCELLED:
-            return TaskCompletionResult(
-                status=TaskCompletionStatus.CANCELLED,
-                uid=task.uuid,
-                task_url=task.url,
-                message=confirmation.message,
-            )
-        if confirmation.status is ConfirmationStatus.FAILED:
-            return TaskCompletionResult(
-                status=TaskCompletionStatus.FAILED,
-                uid=task.uuid,
-                task_url=task.url,
-                message=confirmation.message,
-            )
 
     return await asyncio.to_thread(complete_task_direct, task.uuid)
 

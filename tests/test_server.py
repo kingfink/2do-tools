@@ -51,7 +51,9 @@ def _create_query_schema(connection: sqlite3.Connection) -> None:
             uid text,
             title text,
             isdeleted integer,
-            isarchived integer
+            isarchived integer,
+            parentuid text,
+            isinboxcal integer
         );
 
         create table tags (
@@ -158,12 +160,17 @@ def fake_2do_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         _create_query_schema(connection)
 
         connection.executemany(
-            "insert into calendars (uid, title, isdeleted, isarchived) values (?, ?, ?, ?)",
+            """
+            insert into calendars (
+                uid, title, isdeleted, isarchived, parentuid, isinboxcal
+            ) values (?, ?, ?, ?, ?, ?)
+            """,
             [
-                ("list-inbox", "Inbox", 0, 0),
-                ("list-projects", "Projects", 0, 0),
-                ("list-archived", "Archived", 0, 1),
-                ("list-deleted", "Deleted", 1, 0),
+                ("list-inbox", "Inbox", 0, 0, "2DoCalGroupInbox", 1),
+                ("list-projects", "Projects", 0, 0, "2DoCalGroupLists", 0),
+                ("list-done", "Done", 0, 0, "2DoCalGroupFocus", 0),
+                ("list-archived", "Archived", 0, 1, "2DoCalGroupLists", 0),
+                ("list-deleted", "Deleted", 1, 0, "2DoCalGroupLists", 0),
             ],
         )
         connection.executemany(
@@ -283,6 +290,19 @@ def test_list_lists_includes_showlist_urls(fake_2do_db: Path) -> None:
         ("Inbox", "twodo://x-callback-url/showlist?name=Inbox"),
         ("Projects", "twodo://x-callback-url/showlist?name=Projects"),
     ]
+
+
+def test_get_inbox_list_uses_canonical_inbox_marker(fake_2do_db: Path) -> None:
+    with sqlite3.connect(fake_2do_db) as connection:
+        connection.execute(
+            "update calendars set title = ? where uid = ?",
+            ("Entrée", "list-inbox"),
+        )
+
+    inbox = server._get_inbox_list()
+
+    assert inbox.id == "list-inbox"
+    assert inbox.name == "Entrée"
 
 
 def test_get_tasks_maps_recurring_task_schedule(fake_2do_db: Path) -> None:
@@ -526,6 +546,21 @@ def test_require_list_name_matches_case_insensitively(fake_2do_db: Path) -> None
     assert server._require_list_name("inbox") == "Inbox"
 
 
+def test_require_list_name_defaults_to_canonical_inbox(fake_2do_db: Path) -> None:
+    with sqlite3.connect(fake_2do_db) as connection:
+        connection.execute(
+            "update calendars set title = ? where uid = ?",
+            ("Entrée", "list-inbox"),
+        )
+
+    assert server._require_list_name(None) == "Entrée"
+
+
+def test_require_list_name_rejects_smart_folder(fake_2do_db: Path) -> None:
+    with pytest.raises(ValueError, match="2Do list not found: Done"):
+        server._require_list_name("Done")
+
+
 def test_require_list_name_rejects_unknown_list(fake_2do_db: Path) -> None:
     with pytest.raises(ValueError, match="2Do list not found: Missing"):
         server._require_list_name("Missing")
@@ -557,6 +592,25 @@ def test_task_draft_resolves_list_and_normalizes_fields(fake_2do_db: Path) -> No
     assert draft.title == "Buy milk"
     assert draft.list_name == "Inbox"
     assert draft.tags == ["Home"]
+
+
+def test_task_draft_defaults_to_canonical_inbox(fake_2do_db: Path) -> None:
+    with sqlite3.connect(fake_2do_db) as connection:
+        connection.execute(
+            "update calendars set title = ? where uid = ?",
+            ("Entrée", "list-inbox"),
+        )
+
+    draft = server._task_draft(
+        title="Buy milk",
+        notes=None,
+        list_name=None,
+        due_date=None,
+        tags=None,
+        repeat=None,
+    )
+
+    assert draft.list_name == "Entrée"
 
 
 def test_get_task_returns_exact_uid(fake_2do_db: Path) -> None:
@@ -613,6 +667,23 @@ def test_open_task_quick_entry_opens_prefilled_add_url(
     assert result.opened is True
 
 
+def test_open_task_quick_entry_sends_canonical_inbox_when_list_is_omitted(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with sqlite3.connect(fake_2do_db) as connection:
+        connection.execute(
+            "update calendars set title = ? where uid = ?",
+            ("Entrée", "list-inbox"),
+        )
+    opened_urls: list[str] = []
+    monkeypatch.setattr(server, "open_url", opened_urls.append)
+
+    server.open_task_quick_entry(title="Buy milk")
+
+    assert "&forlist=Entr%C3%A9e&" in opened_urls[0]
+
+
 class _FakeContext:
     def __init__(
         self,
@@ -665,6 +736,13 @@ def test_create_task_uses_form_elicitation_when_supported(
         response=AcceptedElicitation(data=True),
     )
     created_drafts = []
+    threaded_functions = []
+
+    async def to_thread(function, /, *args, **kwargs):
+        threaded_functions.append(function)
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
     monkeypatch.setattr(
         server,
         "create_task_direct",
@@ -687,6 +765,7 @@ def test_create_task_uses_form_elicitation_when_supported(
 
     assert result.status is TaskCreationStatus.CREATED
     assert [draft.list_name for draft in created_drafts] == ["Inbox"]
+    assert threaded_functions == [server._task_draft, server.create_task_direct]
     assert context.calls == [
         (
             "Title: Buy milk\nList: Inbox\nTags: Home",
@@ -758,8 +837,8 @@ def test_create_task_uses_native_confirmation_without_elicitation(
     context = _FakeContext(elicitation=None)
     monkeypatch.setattr(
         server,
-        "confirm_task_native",
-        lambda _draft: ConfirmationResult(
+        "confirm_action_native",
+        lambda _preview, **_kwargs: ConfirmationResult(
             status=ConfirmationStatus.CONFIRMED,
             message="Task creation confirmed.",
         ),
@@ -798,7 +877,11 @@ def test_create_task_stops_when_native_confirmation_does_not_confirm(
     expected_status: TaskCreationStatus,
 ) -> None:
     context = _FakeContext(elicitation=None)
-    monkeypatch.setattr(server, "confirm_task_native", lambda _draft: confirmation)
+    monkeypatch.setattr(
+        server,
+        "confirm_action_native",
+        lambda _preview, **_kwargs: confirmation,
+    )
     monkeypatch.setattr(
         server,
         "create_task_direct",
@@ -840,6 +923,13 @@ def test_complete_task_uses_form_elicitation_when_supported(
         response=AcceptedElicitation(data=True),
     )
     completed_uids: list[str] = []
+    threaded_functions = []
+
+    async def to_thread(function, /, *args, **kwargs):
+        threaded_functions.append(function)
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
     monkeypatch.setattr(
         server,
         "complete_task_direct",
@@ -847,14 +937,15 @@ def test_complete_task_uses_form_elicitation_when_supported(
     )
     monkeypatch.setattr(
         server,
-        "confirm_task_native",
-        lambda _draft: pytest.fail("native confirmation should not be used"),
+        "confirm_action_native",
+        lambda _preview, **_kwargs: pytest.fail("native confirmation should not be used"),
     )
 
     result = asyncio.run(server.complete_task(uid="task-active", ctx=context))
 
     assert result.status is TaskCompletionStatus.COMPLETED
     assert completed_uids == ["task-active"]
+    assert threaded_functions == [server._require_open_task, server.complete_task_direct]
     assert context.calls == [
         (
             "Title: Active task\nList: Inbox\nUID: task-active",
@@ -885,8 +976,8 @@ def test_complete_task_stops_when_elicitation_is_not_accepted(
     )
     monkeypatch.setattr(
         server,
-        "confirm_task_native",
-        lambda _draft: pytest.fail("native confirmation should not be used"),
+        "confirm_action_native",
+        lambda _preview, **_kwargs: pytest.fail("native confirmation should not be used"),
     )
 
     result = asyncio.run(server.complete_task(uid="task-active", ctx=context))
@@ -909,8 +1000,8 @@ def test_complete_task_fails_closed_when_elicitation_errors(
     )
     monkeypatch.setattr(
         server,
-        "confirm_task_native",
-        lambda _draft: pytest.fail("native fallback should not be used"),
+        "confirm_action_native",
+        lambda _preview, **_kwargs: pytest.fail("native fallback should not be used"),
     )
 
     result = asyncio.run(server.complete_task(uid="task-active", ctx=context))
