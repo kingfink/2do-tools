@@ -61,4 +61,7 @@ else
     --target "$(git rev-parse HEAD)"
 fi
 
-echo "Done. Release $tag published with dist/2do-tools.mcpb attached."
+echo "Updating stable branch to $tag..."
+git push origin HEAD:refs/heads/stable --force
+
+echo "Done. Release $tag published, stable updated, and dist/2do-tools.mcpb attached."

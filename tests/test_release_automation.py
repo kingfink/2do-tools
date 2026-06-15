@@ -51,6 +51,17 @@ def test_prepare_release_stages_all_release_metadata_files() -> None:
     assert 'git add "${release_metadata_files[@]}"' in script
 
 
+def test_release_advances_stable_after_github_publication() -> None:
+    script = (REPO_ROOT / "scripts" / "release.sh").read_text()
+    stable_push_position = script.find("git push origin HEAD:refs/heads/stable --force")
+    create_position = script.index('gh release create "$tag"')
+    upload_position = script.index('gh release upload "$tag"')
+
+    assert stable_push_position != -1
+    assert stable_push_position > create_position
+    assert stable_push_position > upload_position
+
+
 def test_product_metadata_describes_reading_creating_and_completing_tasks() -> None:
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     mcpb_manifest = json.loads((REPO_ROOT / "mcpb" / "manifest.json").read_text())
