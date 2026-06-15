@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from _2do_tools import cli, server
-from _2do_tools.task_creation import (
+from _2do_tools.task_mutations import (
     RepeatPreset,
     TaskCompletionResult,
     TaskCompletionStatus,

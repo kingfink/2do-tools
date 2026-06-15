@@ -9,8 +9,8 @@ from urllib.request import Request, urlopen
 import pytest
 from pydantic import ValidationError
 
-import _2do_tools.task_creation as task_creation
-from _2do_tools.task_creation import (
+import _2do_tools.task_mutations as task_mutations
+from _2do_tools.task_mutations import (
     NATIVE_CONFIRM_SCRIPT,
     ConfirmationStatus,
     RepeatPreset,
@@ -247,18 +247,18 @@ def test_callback_error_message_uses_supported_keys(
     query_params: dict[str, list[str]],
     expected: str,
 ) -> None:
-    assert task_creation._callback_error_message(query_params) == expected
+    assert task_mutations._callback_error_message(query_params) == expected
 
 
 def test_completion_callback_listener_accepts_success_for_requested_uid() -> None:
-    with task_creation.TaskCompletionCallbackListener("task-123") as listener:
+    with task_mutations.TaskCompletionCallbackListener("task-123") as listener:
         sender = Thread(target=_send_request, args=(listener.success_url,))
         sender.start()
         result = listener.wait(timeout=1)
         sender.join()
 
-    assert result == task_creation.TaskCompletionResult(
-        status=task_creation.TaskCompletionStatus.COMPLETED,
+    assert result == task_mutations.TaskCompletionResult(
+        status=task_mutations.TaskCompletionStatus.COMPLETED,
         uid="task-123",
         task_url="twodo://x-callback-url/showtask?uid=task-123",
         message="Completed task.",
@@ -266,7 +266,7 @@ def test_completion_callback_listener_accepts_success_for_requested_uid() -> Non
 
 
 def test_completion_callback_listener_returns_error_message() -> None:
-    with task_creation.TaskCompletionCallbackListener("task-123") as listener:
+    with task_mutations.TaskCompletionCallbackListener("task-123") as listener:
         sender = Thread(
             target=_send_request,
             args=(f"{listener.error_url}?errorMessage=Task%20not%20found",),
@@ -275,8 +275,8 @@ def test_completion_callback_listener_returns_error_message() -> None:
         result = listener.wait(timeout=1)
         sender.join()
 
-    assert result == task_creation.TaskCompletionResult(
-        status=task_creation.TaskCompletionStatus.FAILED,
+    assert result == task_mutations.TaskCompletionResult(
+        status=task_mutations.TaskCompletionStatus.FAILED,
         uid="task-123",
         task_url="twodo://x-callback-url/showtask?uid=task-123",
         message="2Do could not complete the task: Task not found",
@@ -284,14 +284,14 @@ def test_completion_callback_listener_returns_error_message() -> None:
 
 
 def test_completion_callback_listener_returns_cancelled() -> None:
-    with task_creation.TaskCompletionCallbackListener("task-123") as listener:
+    with task_mutations.TaskCompletionCallbackListener("task-123") as listener:
         sender = Thread(target=_send_request, args=(listener.cancel_url,))
         sender.start()
         result = listener.wait(timeout=1)
         sender.join()
 
-    assert result == task_creation.TaskCompletionResult(
-        status=task_creation.TaskCompletionStatus.CANCELLED,
+    assert result == task_mutations.TaskCompletionResult(
+        status=task_mutations.TaskCompletionStatus.CANCELLED,
         uid="task-123",
         task_url="twodo://x-callback-url/showtask?uid=task-123",
         message="Task completion cancelled.",
@@ -299,18 +299,18 @@ def test_completion_callback_listener_returns_cancelled() -> None:
 
 
 def test_completion_callback_listener_timeout_warns_about_unknown_outcome() -> None:
-    with task_creation.TaskCompletionCallbackListener("task-123") as listener:
+    with task_mutations.TaskCompletionCallbackListener("task-123") as listener:
         result = listener.wait(timeout=0.01)
 
-    assert isinstance(result, task_creation.TaskCompletionResult)
-    assert result.status is task_creation.TaskCompletionStatus.FAILED
+    assert isinstance(result, task_mutations.TaskCompletionResult)
+    assert result.status is task_mutations.TaskCompletionStatus.FAILED
     assert result.uid == "task-123"
     assert result.task_url == "twodo://x-callback-url/showtask?uid=task-123"
     assert "may have succeeded" in result.message
     assert "before retrying" in result.message
 
 
-CallbackResult = TaskCreationResult | task_creation.TaskCompletionResult
+CallbackResult = TaskCreationResult | task_mutations.TaskCompletionResult
 
 
 class _FakeCallbackListener:
@@ -336,8 +336,8 @@ class _FakeCallbackListener:
 
 
 def test_complete_task_direct_opens_url_after_listener_starts() -> None:
-    expected = task_creation.TaskCompletionResult(
-        status=task_creation.TaskCompletionStatus.COMPLETED,
+    expected = task_mutations.TaskCompletionResult(
+        status=task_mutations.TaskCompletionStatus.COMPLETED,
         uid="task-123",
         task_url="twodo://x-callback-url/showtask?uid=task-123",
         message="Completed task.",
@@ -354,7 +354,7 @@ def test_complete_task_direct_opens_url_after_listener_starts() -> None:
         listener_uids.append(uid)
         return listener
 
-    result = task_creation.complete_task_direct(
+    result = task_mutations.complete_task_direct(
         "task-123",
         open_url_fn=open_url,
         listener_factory=listener_factory,
@@ -376,8 +376,8 @@ def test_complete_task_direct_opens_url_after_listener_starts() -> None:
 
 def test_complete_task_direct_returns_failed_when_2do_cannot_open() -> None:
     listener = _FakeCallbackListener(
-        task_creation.TaskCompletionResult(
-            status=task_creation.TaskCompletionStatus.COMPLETED,
+        task_mutations.TaskCompletionResult(
+            status=task_mutations.TaskCompletionStatus.COMPLETED,
             uid="unused",
             task_url="twodo://x-callback-url/showtask?uid=unused",
             message="unused",
@@ -387,13 +387,13 @@ def test_complete_task_direct_returns_failed_when_2do_cannot_open() -> None:
     def fail_to_open(_url: str) -> None:
         raise OSError("2Do is unavailable")
 
-    result = task_creation.complete_task_direct(
+    result = task_mutations.complete_task_direct(
         "task-123",
         open_url_fn=fail_to_open,
         listener_factory=lambda _uid: listener,
     )
 
-    assert result.status is task_creation.TaskCompletionStatus.FAILED
+    assert result.status is task_mutations.TaskCompletionStatus.FAILED
     assert result.uid == "task-123"
     assert result.message == "Could not open 2Do: 2Do is unavailable"
     assert listener.wait_timeout is None
@@ -543,7 +543,7 @@ def test_native_action_confirmation_passes_preview_and_button_label() -> None:
         calls.append(args)
         return CompletedProcess(args, 0, stdout="confirmed\n", stderr="")
 
-    result = task_creation.confirm_action_native(
+    result = task_mutations.confirm_action_native(
         "Title: Buy milk\nList: Inbox\nUID: task-123",
         action="Complete",
         timeout_seconds=45,
@@ -582,7 +582,7 @@ def test_native_confirmation_returns_cancelled_for_apple_event_timeout() -> None
             stderr="execution error: AppleEvent timed out. (-1712)\n",
         )
 
-    result = task_creation.confirm_action_native(
+    result = task_mutations.confirm_action_native(
         "Title: Buy milk",
         action="Create",
         operation="creation",

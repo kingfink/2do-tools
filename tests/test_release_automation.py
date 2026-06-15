@@ -46,7 +46,7 @@ def test_product_metadata_describes_reading_creating_and_completing_tasks() -> N
     assert "read-only MCP server" not in codex_plugin["interface"]["longDescription"]
 
 
-def test_mcpb_manifest_lists_task_creation_tools() -> None:
+def test_mcpb_manifest_lists_task_mutation_tools() -> None:
     manifest = json.loads((REPO_ROOT / "mcpb" / "manifest.json").read_text())
 
     tool_names = {tool["name"] for tool in manifest["tools"]}
