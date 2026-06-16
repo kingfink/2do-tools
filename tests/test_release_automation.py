@@ -71,6 +71,12 @@ def test_product_metadata_describes_reading_creating_and_completing_tasks() -> N
     assert "read-only MCP server" not in mcpb_manifest["long_description"]
 
 
+def test_project_pins_cryptography_to_a_macos_universal2_wheel_release() -> None:
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+
+    assert "cryptography==48.0.0" in pyproject["project"]["dependencies"]
+
+
 def test_mcpb_manifest_lists_task_mutation_tools() -> None:
     manifest = json.loads((REPO_ROOT / "mcpb" / "manifest.json").read_text())
     tool_names = {tool["name"] for tool in manifest["tools"]}
