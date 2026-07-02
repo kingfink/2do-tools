@@ -649,6 +649,72 @@ def test_task_draft_defaults_to_canonical_inbox(fake_2do_db: Path) -> None:
     assert draft.list_name == "Entrée"
 
 
+def test_build_batch_drafts_resolves_lists_with_single_lookup(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"lists": 0, "inbox": 0}
+    real_get_lists = server._get_lists
+    real_get_inbox_list = server._get_inbox_list
+
+    def counting_get_lists() -> list[server.TaskList]:
+        calls["lists"] += 1
+        return real_get_lists()
+
+    def counting_get_inbox_list() -> server.TaskList:
+        calls["inbox"] += 1
+        return real_get_inbox_list()
+
+    monkeypatch.setattr(server, "_get_lists", counting_get_lists)
+    monkeypatch.setattr(server, "_get_inbox_list", counting_get_inbox_list)
+
+    drafts = server._build_batch_drafts(
+        [
+            server.TaskDraftInput(title="Buy milk"),
+            server.TaskDraftInput(title="Pack socks", list_name="packing list"),
+            server.TaskDraftInput(title="Buy bread"),
+        ]
+    )
+
+    assert [draft.list_name for draft in drafts] == ["Inbox", "Packing List", "Inbox"]
+    assert calls == {"lists": 1, "inbox": 1}
+
+
+def test_build_batch_drafts_rejects_unknown_list(fake_2do_db: Path) -> None:
+    with pytest.raises(ValueError, match="2Do list not found: Missing"):
+        server._build_batch_drafts(
+            [
+                server.TaskDraftInput(title="Buy milk"),
+                server.TaskDraftInput(title="Lost task", list_name="Missing"),
+            ]
+        )
+
+
+def test_batch_creation_preview_names_single_list() -> None:
+    drafts = [
+        server.TaskDraft(title="Buy milk", list_name="Inbox"),
+        server.TaskDraft(title="Buy bread", list_name="Inbox"),
+    ]
+
+    assert server._batch_creation_preview(drafts) == "Create 2 tasks in Inbox?"
+
+
+def test_batch_creation_preview_counts_multiple_lists() -> None:
+    drafts = [
+        server.TaskDraft(title="Buy milk", list_name="Inbox"),
+        server.TaskDraft(title="Pack socks", list_name="Packing List"),
+        server.TaskDraft(title="Buy bread", list_name="Inbox"),
+    ]
+
+    assert server._batch_creation_preview(drafts) == "Create 3 tasks across 2 lists?"
+
+
+def test_batch_creation_preview_uses_singular_for_one_task() -> None:
+    drafts = [server.TaskDraft(title="Buy milk", list_name="Inbox")]
+
+    assert server._batch_creation_preview(drafts) == "Create 1 task in Inbox?"
+
+
 def test_get_task_returns_exact_uid(fake_2do_db: Path) -> None:
     task = server._get_task("task-active")
 

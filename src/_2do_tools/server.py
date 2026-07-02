@@ -190,6 +190,15 @@ class OpenedUrl(BaseModel):
     opened: bool
 
 
+class TaskDraftInput(BaseModel):
+    title: str
+    notes: str | None = None
+    list_name: str | None = None
+    due_date: date | None = None
+    tags: list[str] | None = None
+    repeat: RepeatPreset | None = None
+
+
 def _has_due_date_filter(filters: TaskFilters) -> bool:
     return filters.has_due_date or filters.due_from is not None or filters.due_before is not None
 
@@ -555,6 +564,45 @@ def _task_draft(
         tags=tags,
         repeat=repeat,
     )
+
+
+def _build_batch_drafts(inputs: list[TaskDraftInput]) -> list[TaskDraft]:
+    lists_by_key = {task_list.name.casefold(): task_list.name for task_list in _get_lists()}
+    inbox_name: str | None = None
+    drafts: list[TaskDraft] = []
+
+    for item in inputs:
+        if item.list_name is None:
+            if inbox_name is None:
+                inbox_name = _get_inbox_list().name
+            resolved_name = inbox_name
+        else:
+            resolved_name = lists_by_key.get(item.list_name.casefold())
+            if resolved_name is None:
+                raise ValueError(f"2Do list not found: {item.list_name}")
+
+        drafts.append(
+            TaskDraft(
+                title=item.title,
+                notes=item.notes,
+                list_name=resolved_name,
+                due_date=item.due_date,
+                tags=item.tags,
+                repeat=item.repeat,
+            )
+        )
+
+    return drafts
+
+
+def _batch_creation_preview(drafts: list[TaskDraft]) -> str:
+    list_names = list(dict.fromkeys(draft.list_name for draft in drafts))
+    noun = "task" if len(drafts) == 1 else "tasks"
+
+    if len(list_names) == 1:
+        return f"Create {len(drafts)} {noun} in {list_names[0]}?"
+
+    return f"Create {len(drafts)} {noun} across {len(list_names)} lists?"
 
 
 def _get_tags() -> list[Tag]:
