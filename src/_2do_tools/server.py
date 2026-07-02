@@ -37,8 +37,9 @@ MCP_INSTRUCTIONS = (
     "URLs. open_task/open_list/open_search only open views on the Mac running the server; use "
     "them when the user asks to open something. open_task_quick_entry opens a pre-filled editor "
     "that the user must save in 2Do. create_task creates directly only after MCP elicitation or "
-    "native confirmation on the host Mac. complete_task completes exactly one existing task after "
-    "the same confirmation. Run refresh_backup_db if results look stale."
+    "native confirmation on the host Mac. create_tasks creates a batch of tasks after one "
+    "confirmation showing only the task count and target lists. complete_task completes exactly "
+    "one existing task after the same confirmation. Run refresh_backup_db if results look stale."
 )
 
 mcp = FastMCP("2Do", instructions=MCP_INSTRUCTIONS)
@@ -94,6 +95,10 @@ REQUIRED_BACKUP_COLUMNS = {
         "isinboxcal",
         "parentuid",
         "title",
+        "uid",
+    ],
+    "calgroups": [
+        "isdeleted",
         "uid",
     ],
     "tags": ["isdeleted", "tag", "uid"],
@@ -184,6 +189,15 @@ class TaskFilters:
 class OpenedUrl(BaseModel):
     url: str
     opened: bool
+
+
+class TaskDraftInput(BaseModel):
+    title: str
+    notes: str | None = None
+    list_name: str | None = None
+    due_date: date | None = None
+    tags: list[str] | None = None
+    repeat: RepeatPreset | None = None
 
 
 def _has_due_date_filter(filters: TaskFilters) -> bool:
@@ -459,7 +473,15 @@ def _get_lists() -> list[TaskList]:
               and uid != ''
               and coalesce(isdeleted, 0) = 0
               and coalesce(isarchived, 0) = 0
-              and parentuid in ('2DoCalGroupLists', '2DoCalGroupInbox')
+              and parentuid not in ('2DoCalGroupFocus', '2DoCalGroupSmart')
+              and (
+                  parentuid in ('2DoCalGroupLists', '2DoCalGroupInbox')
+                  or parentuid in (
+                      select uid
+                      from calgroups
+                      where coalesce(isdeleted, 0) = 0
+                  )
+              )
             order by lower(coalesce(title, '')), uid
             """
         ).fetchall()
@@ -543,6 +565,45 @@ def _task_draft(
         tags=tags,
         repeat=repeat,
     )
+
+
+def _build_batch_drafts(inputs: list[TaskDraftInput]) -> list[TaskDraft]:
+    lists_by_key = {task_list.name.casefold(): task_list.name for task_list in _get_lists()}
+    inbox_name: str | None = None
+    drafts: list[TaskDraft] = []
+
+    for item in inputs:
+        if item.list_name is None:
+            if inbox_name is None:
+                inbox_name = _get_inbox_list().name
+            resolved_name = inbox_name
+        else:
+            resolved_name = lists_by_key.get(item.list_name.casefold())
+            if resolved_name is None:
+                raise ValueError(f"2Do list not found: {item.list_name}")
+
+        drafts.append(
+            TaskDraft(
+                title=item.title,
+                notes=item.notes,
+                list_name=resolved_name,
+                due_date=item.due_date,
+                tags=item.tags,
+                repeat=item.repeat,
+            )
+        )
+
+    return drafts
+
+
+def _batch_creation_preview(drafts: list[TaskDraft]) -> str:
+    list_names = list(dict.fromkeys(draft.list_name for draft in drafts))
+    noun = "task" if len(drafts) == 1 else "tasks"
+
+    if len(list_names) == 1:
+        return f"Create {len(drafts)} {noun} in {list_names[0]}?"
+
+    return f"Create {len(drafts)} {noun} across {len(list_names)} lists?"
 
 
 def _get_tags() -> list[Tag]:
@@ -700,6 +761,17 @@ def ensure_backup_db_current(*, now: datetime | None = None) -> None:
 
     refresh_backup()
     _last_auto_refresh_check_at = current_time
+
+
+def _refresh_backup_after_mutations() -> None:
+    global _last_auto_refresh_check_at
+
+    try:
+        refresh_backup()
+    except (OSError, RuntimeError, sqlite3.Error):
+        return
+
+    _last_auto_refresh_check_at = datetime.now(UTC)
 
 
 def _path_exists(path: Path) -> bool:
@@ -1193,6 +1265,49 @@ async def create_task(
         )
 
     return await asyncio.to_thread(create_task_direct, draft)
+
+
+def _create_tasks_direct(drafts: list[TaskDraft]) -> list[TaskCreationResult]:
+    results = [create_task_direct(draft) for draft in drafts]
+    _refresh_backup_after_mutations()
+    return results
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+async def create_tasks(
+    ctx: Context,
+    drafts: list[TaskDraftInput],
+) -> list[TaskCreationResult]:
+    """Create multiple 2Do tasks after a single explicit user confirmation."""
+    if not drafts:
+        raise ValueError("drafts must not be empty")
+
+    resolved_drafts = await asyncio.to_thread(_build_batch_drafts, drafts)
+    confirmation = await _confirm(
+        ctx,
+        _batch_creation_preview(resolved_drafts),
+        response_title="Create these tasks?",
+        action="Create",
+        operation="creation",
+    )
+    if confirmation.status is not ConfirmationStatus.CONFIRMED:
+        status = (
+            TaskCreationStatus.CANCELLED
+            if confirmation.status is ConfirmationStatus.CANCELLED
+            else TaskCreationStatus.FAILED
+        )
+        return [
+            TaskCreationResult(status=status, message=confirmation.message) for _ in resolved_drafts
+        ]
+
+    return await asyncio.to_thread(_create_tasks_direct, resolved_drafts)
 
 
 @mcp.tool(
