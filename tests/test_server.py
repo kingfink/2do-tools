@@ -1167,3 +1167,211 @@ def test_complete_task_tool_annotations_describe_mutation() -> None:
     assert tool.annotations.destructiveHint is False
     assert tool.annotations.idempotentHint is False
     assert tool.annotations.openWorldHint is True
+
+
+def _batch_inputs() -> list[server.TaskDraftInput]:
+    return [
+        server.TaskDraftInput(title="Buy milk"),
+        server.TaskDraftInput(title="Buy bread"),
+    ]
+
+
+def test_create_tasks_confirms_once_then_creates_all_in_order(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _FakeContext(elicitation=None)
+    created_titles: list[str] = []
+    confirmation_calls = []
+    refresh_calls: list[bool] = []
+
+    async def confirm(ctx, preview, **kwargs):
+        confirmation_calls.append((ctx, preview, kwargs))
+        return ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task creation confirmed.",
+        )
+
+    async def to_thread(function, /, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    def create_task_direct(draft):
+        created_titles.append(draft.title)
+        return TaskCreationResult(
+            status=TaskCreationStatus.CREATED,
+            uid=f"task-{len(created_titles)}",
+            task_url=f"twodo://x-callback-url/showtask?uid=task-{len(created_titles)}",
+            message="Created task.",
+        )
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(server, "create_task_direct", create_task_direct)
+    monkeypatch.setattr(server, "refresh_backup", lambda: refresh_calls.append(True) or True)
+
+    results = asyncio.run(server.create_tasks(drafts=_batch_inputs(), ctx=context))
+
+    assert created_titles == ["Buy milk", "Buy bread"]
+    assert [result.status for result in results] == [TaskCreationStatus.CREATED] * 2
+    assert [result.uid for result in results] == ["task-1", "task-2"]
+    assert len(confirmation_calls) == 1
+    assert confirmation_calls[0][1] == "Create 2 tasks in Inbox?"
+    assert confirmation_calls[0][2] == {
+        "response_title": "Create these tasks?",
+        "action": "Create",
+        "operation": "creation",
+    }
+    assert refresh_calls == [True]
+
+
+@pytest.mark.parametrize(
+    ("confirmation_status", "expected_status"),
+    [
+        (ConfirmationStatus.CANCELLED, TaskCreationStatus.CANCELLED),
+        (ConfirmationStatus.FAILED, TaskCreationStatus.FAILED),
+    ],
+)
+def test_create_tasks_unconfirmed_creates_nothing(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    confirmation_status: ConfirmationStatus,
+    expected_status: TaskCreationStatus,
+) -> None:
+    async def confirm(*_args, **_kwargs):
+        return ConfirmationResult(
+            status=confirmation_status,
+            message="Confirmation stopped.",
+        )
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(
+        server,
+        "create_task_direct",
+        lambda _draft: pytest.fail("no task should be created"),
+    )
+    monkeypatch.setattr(
+        server,
+        "refresh_backup",
+        lambda: pytest.fail("backup should not refresh without creations"),
+    )
+
+    results = asyncio.run(
+        server.create_tasks(drafts=_batch_inputs(), ctx=_FakeContext(elicitation=None))
+    )
+
+    assert [result.status for result in results] == [expected_status] * 2
+    assert [result.message for result in results] == ["Confirmation stopped."] * 2
+
+
+def test_create_tasks_continues_after_item_failure(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _FakeContext(elicitation=None)
+    attempted_titles: list[str] = []
+
+    async def confirm(*_args, **_kwargs):
+        return ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task creation confirmed.",
+        )
+
+    async def to_thread(function, /, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    def create_task_direct(draft):
+        attempted_titles.append(draft.title)
+        if draft.title == "Buy bread":
+            return TaskCreationResult(
+                status=TaskCreationStatus.FAILED,
+                message="2Do could not create the task: boom",
+            )
+        return _created_result()
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(server, "create_task_direct", create_task_direct)
+    monkeypatch.setattr(server, "refresh_backup", lambda: True)
+
+    results = asyncio.run(
+        server.create_tasks(
+            drafts=[
+                server.TaskDraftInput(title="Buy milk"),
+                server.TaskDraftInput(title="Buy bread"),
+                server.TaskDraftInput(title="Buy eggs"),
+            ],
+            ctx=context,
+        )
+    )
+
+    assert attempted_titles == ["Buy milk", "Buy bread", "Buy eggs"]
+    assert [result.status for result in results] == [
+        TaskCreationStatus.CREATED,
+        TaskCreationStatus.FAILED,
+        TaskCreationStatus.CREATED,
+    ]
+
+
+def test_create_tasks_rejects_unknown_list_before_confirming(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def confirm(*_args, **_kwargs):
+        pytest.fail("confirmation should not be requested")
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+
+    with pytest.raises(ValueError, match="2Do list not found: Missing"):
+        asyncio.run(
+            server.create_tasks(
+                drafts=[server.TaskDraftInput(title="Lost task", list_name="Missing")],
+                ctx=_FakeContext(elicitation=None),
+            )
+        )
+
+
+def test_create_tasks_rejects_empty_drafts(fake_2do_db: Path) -> None:
+    with pytest.raises(ValueError, match="drafts must not be empty"):
+        asyncio.run(server.create_tasks(drafts=[], ctx=_FakeContext(elicitation=None)))
+
+
+def test_create_tasks_refresh_failure_does_not_mask_results(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def confirm(*_args, **_kwargs):
+        return ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task creation confirmed.",
+        )
+
+    async def to_thread(function, /, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    def failing_refresh() -> bool:
+        raise RuntimeError("no valid database")
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(server, "create_task_direct", lambda _draft: _created_result())
+    monkeypatch.setattr(server, "refresh_backup", failing_refresh)
+
+    results = asyncio.run(
+        server.create_tasks(
+            drafts=[server.TaskDraftInput(title="Buy milk")],
+            ctx=_FakeContext(elicitation=None),
+        )
+    )
+
+    assert [result.status for result in results] == [TaskCreationStatus.CREATED]
+
+
+def test_create_tasks_tool_annotations_describe_mutation() -> None:
+    tool = asyncio.run(server.mcp.get_tool("create_tasks"))
+
+    assert tool is not None
+    assert tool.annotations is not None
+    assert tool.annotations.readOnlyHint is False
+    assert tool.annotations.destructiveHint is False
+    assert tool.annotations.idempotentHint is False
+    assert tool.annotations.openWorldHint is True

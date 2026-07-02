@@ -762,6 +762,17 @@ def ensure_backup_db_current(*, now: datetime | None = None) -> None:
     _last_auto_refresh_check_at = current_time
 
 
+def _refresh_backup_after_mutations() -> None:
+    global _last_auto_refresh_check_at
+
+    try:
+        refresh_backup()
+    except (OSError, RuntimeError, sqlite3.Error):
+        return
+
+    _last_auto_refresh_check_at = datetime.now(UTC)
+
+
 def _path_exists(path: Path) -> bool:
     try:
         return path.exists()
@@ -1253,6 +1264,49 @@ async def create_task(
         )
 
     return await asyncio.to_thread(create_task_direct, draft)
+
+
+def _create_tasks_direct(drafts: list[TaskDraft]) -> list[TaskCreationResult]:
+    results = [create_task_direct(draft) for draft in drafts]
+    _refresh_backup_after_mutations()
+    return results
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+async def create_tasks(
+    ctx: Context,
+    drafts: list[TaskDraftInput],
+) -> list[TaskCreationResult]:
+    """Create multiple 2Do tasks after a single explicit user confirmation."""
+    if not drafts:
+        raise ValueError("drafts must not be empty")
+
+    resolved_drafts = await asyncio.to_thread(_build_batch_drafts, drafts)
+    confirmation = await _confirm(
+        ctx,
+        _batch_creation_preview(resolved_drafts),
+        response_title="Create these tasks?",
+        action="Create",
+        operation="creation",
+    )
+    if confirmation.status is not ConfirmationStatus.CONFIRMED:
+        status = (
+            TaskCreationStatus.CANCELLED
+            if confirmation.status is ConfirmationStatus.CANCELLED
+            else TaskCreationStatus.FAILED
+        )
+        return [
+            TaskCreationResult(status=status, message=confirmation.message) for _ in resolved_drafts
+        ]
+
+    return await asyncio.to_thread(_create_tasks_direct, resolved_drafts)
 
 
 @mcp.tool(
