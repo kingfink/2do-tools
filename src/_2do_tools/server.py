@@ -37,8 +37,9 @@ MCP_INSTRUCTIONS = (
     "URLs. open_task/open_list/open_search only open views on the Mac running the server; use "
     "them when the user asks to open something. open_task_quick_entry opens a pre-filled editor "
     "that the user must save in 2Do. create_task creates directly only after MCP elicitation or "
-    "native confirmation on the host Mac. complete_task completes exactly one existing task after "
-    "the same confirmation. Run refresh_backup_db if results look stale."
+    "native confirmation on the host Mac. create_tasks creates a batch of tasks after one "
+    "confirmation showing only the task count and target lists. complete_task completes exactly "
+    "one existing task after the same confirmation. Run refresh_backup_db if results look stale."
 )
 
 mcp = FastMCP("2Do", instructions=MCP_INSTRUCTIONS)
