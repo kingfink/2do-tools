@@ -62,6 +62,12 @@ def _create_query_schema(connection: sqlite3.Connection) -> None:
             isdeleted integer
         );
 
+        create table calgroups (
+            uid text,
+            groupname text,
+            isdeleted integer
+        );
+
         create table tasks (
             primid integer,
             uid text,
@@ -171,6 +177,20 @@ def fake_2do_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                 ("list-done", "Done", 0, 0, "2DoCalGroupFocus", 0),
                 ("list-archived", "Archived", 0, 1, "2DoCalGroupLists", 0),
                 ("list-deleted", "Deleted", 1, 0, "2DoCalGroupLists", 0),
+                ("list-packing", "Packing List", 0, 0, "5f2a10bf9f0a4ffebc537f6cc34d9a3a", 0),
+                ("list-smart", "All Tasks", 0, 0, "2DoCalGroupSmart", 0),
+                ("list-orphaned", "Old Group List", 0, 0, "d41d8cd98f00b204e9800998ecf8427e", 0),
+            ],
+        )
+        connection.executemany(
+            "insert into calgroups (uid, groupname, isdeleted) values (?, ?, ?)",
+            [
+                ("2DoCalGroupInbox", "COLLECT", 0),
+                ("2DoCalGroupLists", "WORK", 0),
+                ("2DoCalGroupFocus", "FOCUS", 0),
+                ("2DoCalGroupSmart", "SMART LISTS", 0),
+                ("5f2a10bf9f0a4ffebc537f6cc34d9a3a", "PERSONAL", 0),
+                ("d41d8cd98f00b204e9800998ecf8427e", "OLD GROUP", 1),
             ],
         )
         connection.executemany(
@@ -288,6 +308,7 @@ def test_list_lists_includes_showlist_urls(fake_2do_db: Path) -> None:
 
     assert [(task_list.name, task_list.url) for task_list in lists] == [
         ("Inbox", "twodo://x-callback-url/showlist?name=Inbox"),
+        ("Packing List", "twodo://x-callback-url/showlist?name=Packing%20List"),
         ("Projects", "twodo://x-callback-url/showlist?name=Projects"),
     ]
 
@@ -436,6 +457,8 @@ def test_validate_backup_db_accepts_minimal_required_schema(tmp_path: Path) -> N
         (None, ("tasks", "uid")),
         (None, ("calendars", "isdeleted")),
         (None, ("calendars", "isarchived")),
+        ("calgroups", None),
+        (None, ("calgroups", "uid")),
     ],
 )
 def test_validate_backup_db_rejects_missing_required_schema(
@@ -594,6 +617,19 @@ def test_task_draft_resolves_list_and_normalizes_fields(fake_2do_db: Path) -> No
     assert draft.tags == ["Home"]
 
 
+def test_task_draft_resolves_list_in_user_created_group(fake_2do_db: Path) -> None:
+    draft = server._task_draft(
+        title="Pack socks",
+        notes=None,
+        list_name="packing list",
+        due_date=None,
+        tags=None,
+        repeat=None,
+    )
+
+    assert draft.list_name == "Packing List"
+
+
 def test_task_draft_defaults_to_canonical_inbox(fake_2do_db: Path) -> None:
     with sqlite3.connect(fake_2do_db) as connection:
         connection.execute(
@@ -611,6 +647,72 @@ def test_task_draft_defaults_to_canonical_inbox(fake_2do_db: Path) -> None:
     )
 
     assert draft.list_name == "Entrée"
+
+
+def test_build_batch_drafts_resolves_lists_with_single_lookup(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"lists": 0, "inbox": 0}
+    real_get_lists = server._get_lists
+    real_get_inbox_list = server._get_inbox_list
+
+    def counting_get_lists() -> list[server.TaskList]:
+        calls["lists"] += 1
+        return real_get_lists()
+
+    def counting_get_inbox_list() -> server.TaskList:
+        calls["inbox"] += 1
+        return real_get_inbox_list()
+
+    monkeypatch.setattr(server, "_get_lists", counting_get_lists)
+    monkeypatch.setattr(server, "_get_inbox_list", counting_get_inbox_list)
+
+    drafts = server._build_batch_drafts(
+        [
+            server.TaskDraftInput(title="Buy milk"),
+            server.TaskDraftInput(title="Pack socks", list_name="packing list"),
+            server.TaskDraftInput(title="Buy bread"),
+        ]
+    )
+
+    assert [draft.list_name for draft in drafts] == ["Inbox", "Packing List", "Inbox"]
+    assert calls == {"lists": 1, "inbox": 1}
+
+
+def test_build_batch_drafts_rejects_unknown_list(fake_2do_db: Path) -> None:
+    with pytest.raises(ValueError, match="2Do list not found: Missing"):
+        server._build_batch_drafts(
+            [
+                server.TaskDraftInput(title="Buy milk"),
+                server.TaskDraftInput(title="Lost task", list_name="Missing"),
+            ]
+        )
+
+
+def test_batch_creation_preview_names_single_list() -> None:
+    drafts = [
+        server.TaskDraft(title="Buy milk", list_name="Inbox"),
+        server.TaskDraft(title="Buy bread", list_name="Inbox"),
+    ]
+
+    assert server._batch_creation_preview(drafts) == "Create 2 tasks in Inbox?"
+
+
+def test_batch_creation_preview_counts_multiple_lists() -> None:
+    drafts = [
+        server.TaskDraft(title="Buy milk", list_name="Inbox"),
+        server.TaskDraft(title="Pack socks", list_name="Packing List"),
+        server.TaskDraft(title="Buy bread", list_name="Inbox"),
+    ]
+
+    assert server._batch_creation_preview(drafts) == "Create 3 tasks across 2 lists?"
+
+
+def test_batch_creation_preview_uses_singular_for_one_task() -> None:
+    drafts = [server.TaskDraft(title="Buy milk", list_name="Inbox")]
+
+    assert server._batch_creation_preview(drafts) == "Create 1 task in Inbox?"
 
 
 def test_get_task_returns_exact_uid(fake_2do_db: Path) -> None:
@@ -1058,6 +1160,214 @@ def test_complete_task_maps_unconfirmed_result(
 
 def test_complete_task_tool_annotations_describe_mutation() -> None:
     tool = asyncio.run(server.mcp.get_tool("complete_task"))
+
+    assert tool is not None
+    assert tool.annotations is not None
+    assert tool.annotations.readOnlyHint is False
+    assert tool.annotations.destructiveHint is False
+    assert tool.annotations.idempotentHint is False
+    assert tool.annotations.openWorldHint is True
+
+
+def _batch_inputs() -> list[server.TaskDraftInput]:
+    return [
+        server.TaskDraftInput(title="Buy milk"),
+        server.TaskDraftInput(title="Buy bread"),
+    ]
+
+
+def test_create_tasks_confirms_once_then_creates_all_in_order(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _FakeContext(elicitation=None)
+    created_titles: list[str] = []
+    confirmation_calls = []
+    refresh_calls: list[bool] = []
+
+    async def confirm(ctx, preview, **kwargs):
+        confirmation_calls.append((ctx, preview, kwargs))
+        return ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task creation confirmed.",
+        )
+
+    async def to_thread(function, /, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    def create_task_direct(draft):
+        created_titles.append(draft.title)
+        return TaskCreationResult(
+            status=TaskCreationStatus.CREATED,
+            uid=f"task-{len(created_titles)}",
+            task_url=f"twodo://x-callback-url/showtask?uid=task-{len(created_titles)}",
+            message="Created task.",
+        )
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(server, "create_task_direct", create_task_direct)
+    monkeypatch.setattr(server, "refresh_backup", lambda: refresh_calls.append(True) or True)
+
+    results = asyncio.run(server.create_tasks(drafts=_batch_inputs(), ctx=context))
+
+    assert created_titles == ["Buy milk", "Buy bread"]
+    assert [result.status for result in results] == [TaskCreationStatus.CREATED] * 2
+    assert [result.uid for result in results] == ["task-1", "task-2"]
+    assert len(confirmation_calls) == 1
+    assert confirmation_calls[0][1] == "Create 2 tasks in Inbox?"
+    assert confirmation_calls[0][2] == {
+        "response_title": "Create these tasks?",
+        "action": "Create",
+        "operation": "creation",
+    }
+    assert refresh_calls == [True]
+
+
+@pytest.mark.parametrize(
+    ("confirmation_status", "expected_status"),
+    [
+        (ConfirmationStatus.CANCELLED, TaskCreationStatus.CANCELLED),
+        (ConfirmationStatus.FAILED, TaskCreationStatus.FAILED),
+    ],
+)
+def test_create_tasks_unconfirmed_creates_nothing(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    confirmation_status: ConfirmationStatus,
+    expected_status: TaskCreationStatus,
+) -> None:
+    async def confirm(*_args, **_kwargs):
+        return ConfirmationResult(
+            status=confirmation_status,
+            message="Confirmation stopped.",
+        )
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(
+        server,
+        "create_task_direct",
+        lambda _draft: pytest.fail("no task should be created"),
+    )
+    monkeypatch.setattr(
+        server,
+        "refresh_backup",
+        lambda: pytest.fail("backup should not refresh without creations"),
+    )
+
+    results = asyncio.run(
+        server.create_tasks(drafts=_batch_inputs(), ctx=_FakeContext(elicitation=None))
+    )
+
+    assert [result.status for result in results] == [expected_status] * 2
+    assert [result.message for result in results] == ["Confirmation stopped."] * 2
+
+
+def test_create_tasks_continues_after_item_failure(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _FakeContext(elicitation=None)
+    attempted_titles: list[str] = []
+
+    async def confirm(*_args, **_kwargs):
+        return ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task creation confirmed.",
+        )
+
+    async def to_thread(function, /, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    def create_task_direct(draft):
+        attempted_titles.append(draft.title)
+        if draft.title == "Buy bread":
+            return TaskCreationResult(
+                status=TaskCreationStatus.FAILED,
+                message="2Do could not create the task: boom",
+            )
+        return _created_result()
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(server, "create_task_direct", create_task_direct)
+    monkeypatch.setattr(server, "refresh_backup", lambda: True)
+
+    results = asyncio.run(
+        server.create_tasks(
+            drafts=[
+                server.TaskDraftInput(title="Buy milk"),
+                server.TaskDraftInput(title="Buy bread"),
+                server.TaskDraftInput(title="Buy eggs"),
+            ],
+            ctx=context,
+        )
+    )
+
+    assert attempted_titles == ["Buy milk", "Buy bread", "Buy eggs"]
+    assert [result.status for result in results] == [
+        TaskCreationStatus.CREATED,
+        TaskCreationStatus.FAILED,
+        TaskCreationStatus.CREATED,
+    ]
+
+
+def test_create_tasks_rejects_unknown_list_before_confirming(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def confirm(*_args, **_kwargs):
+        pytest.fail("confirmation should not be requested")
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+
+    with pytest.raises(ValueError, match="2Do list not found: Missing"):
+        asyncio.run(
+            server.create_tasks(
+                drafts=[server.TaskDraftInput(title="Lost task", list_name="Missing")],
+                ctx=_FakeContext(elicitation=None),
+            )
+        )
+
+
+def test_create_tasks_rejects_empty_drafts(fake_2do_db: Path) -> None:
+    with pytest.raises(ValueError, match="drafts must not be empty"):
+        asyncio.run(server.create_tasks(drafts=[], ctx=_FakeContext(elicitation=None)))
+
+
+def test_create_tasks_refresh_failure_does_not_mask_results(
+    fake_2do_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def confirm(*_args, **_kwargs):
+        return ConfirmationResult(
+            status=ConfirmationStatus.CONFIRMED,
+            message="Task creation confirmed.",
+        )
+
+    async def to_thread(function, /, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    def failing_refresh() -> bool:
+        raise RuntimeError("no valid database")
+
+    monkeypatch.setattr(server, "_confirm", confirm)
+    monkeypatch.setattr(server.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(server, "create_task_direct", lambda _draft: _created_result())
+    monkeypatch.setattr(server, "refresh_backup", failing_refresh)
+
+    results = asyncio.run(
+        server.create_tasks(
+            drafts=[server.TaskDraftInput(title="Buy milk")],
+            ctx=_FakeContext(elicitation=None),
+        )
+    )
+
+    assert [result.status for result in results] == [TaskCreationStatus.CREATED]
+
+
+def test_create_tasks_tool_annotations_describe_mutation() -> None:
+    tool = asyncio.run(server.mcp.get_tool("create_tasks"))
 
     assert tool is not None
     assert tool.annotations is not None
