@@ -96,6 +96,10 @@ REQUIRED_BACKUP_COLUMNS = {
         "title",
         "uid",
     ],
+    "calgroups": [
+        "isdeleted",
+        "uid",
+    ],
     "tags": ["isdeleted", "tag", "uid"],
 }
 
@@ -459,7 +463,15 @@ def _get_lists() -> list[TaskList]:
               and uid != ''
               and coalesce(isdeleted, 0) = 0
               and coalesce(isarchived, 0) = 0
-              and parentuid in ('2DoCalGroupLists', '2DoCalGroupInbox')
+              and parentuid not in ('2DoCalGroupFocus', '2DoCalGroupSmart')
+              and (
+                  parentuid in ('2DoCalGroupLists', '2DoCalGroupInbox')
+                  or parentuid in (
+                      select uid
+                      from calgroups
+                      where coalesce(isdeleted, 0) = 0
+                  )
+              )
             order by lower(coalesce(title, '')), uid
             """
         ).fetchall()

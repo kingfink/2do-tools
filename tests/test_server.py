@@ -62,6 +62,12 @@ def _create_query_schema(connection: sqlite3.Connection) -> None:
             isdeleted integer
         );
 
+        create table calgroups (
+            uid text,
+            groupname text,
+            isdeleted integer
+        );
+
         create table tasks (
             primid integer,
             uid text,
@@ -171,6 +177,20 @@ def fake_2do_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                 ("list-done", "Done", 0, 0, "2DoCalGroupFocus", 0),
                 ("list-archived", "Archived", 0, 1, "2DoCalGroupLists", 0),
                 ("list-deleted", "Deleted", 1, 0, "2DoCalGroupLists", 0),
+                ("list-packing", "Packing List", 0, 0, "5f2a10bf9f0a4ffebc537f6cc34d9a3a", 0),
+                ("list-smart", "All Tasks", 0, 0, "2DoCalGroupSmart", 0),
+                ("list-orphaned", "Old Group List", 0, 0, "d41d8cd98f00b204e9800998ecf8427e", 0),
+            ],
+        )
+        connection.executemany(
+            "insert into calgroups (uid, groupname, isdeleted) values (?, ?, ?)",
+            [
+                ("2DoCalGroupInbox", "COLLECT", 0),
+                ("2DoCalGroupLists", "WORK", 0),
+                ("2DoCalGroupFocus", "FOCUS", 0),
+                ("2DoCalGroupSmart", "SMART LISTS", 0),
+                ("5f2a10bf9f0a4ffebc537f6cc34d9a3a", "PERSONAL", 0),
+                ("d41d8cd98f00b204e9800998ecf8427e", "OLD GROUP", 1),
             ],
         )
         connection.executemany(
@@ -288,6 +308,7 @@ def test_list_lists_includes_showlist_urls(fake_2do_db: Path) -> None:
 
     assert [(task_list.name, task_list.url) for task_list in lists] == [
         ("Inbox", "twodo://x-callback-url/showlist?name=Inbox"),
+        ("Packing List", "twodo://x-callback-url/showlist?name=Packing%20List"),
         ("Projects", "twodo://x-callback-url/showlist?name=Projects"),
     ]
 
@@ -436,6 +457,8 @@ def test_validate_backup_db_accepts_minimal_required_schema(tmp_path: Path) -> N
         (None, ("tasks", "uid")),
         (None, ("calendars", "isdeleted")),
         (None, ("calendars", "isarchived")),
+        ("calgroups", None),
+        (None, ("calgroups", "uid")),
     ],
 )
 def test_validate_backup_db_rejects_missing_required_schema(
@@ -592,6 +615,19 @@ def test_task_draft_resolves_list_and_normalizes_fields(fake_2do_db: Path) -> No
     assert draft.title == "Buy milk"
     assert draft.list_name == "Inbox"
     assert draft.tags == ["Home"]
+
+
+def test_task_draft_resolves_list_in_user_created_group(fake_2do_db: Path) -> None:
+    draft = server._task_draft(
+        title="Pack socks",
+        notes=None,
+        list_name="packing list",
+        due_date=None,
+        tags=None,
+        repeat=None,
+    )
+
+    assert draft.list_name == "Packing List"
 
 
 def test_task_draft_defaults_to_canonical_inbox(fake_2do_db: Path) -> None:
