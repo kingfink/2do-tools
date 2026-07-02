@@ -72,9 +72,18 @@ def test_product_metadata_describes_reading_creating_and_completing_tasks() -> N
 
 
 def test_project_pins_cryptography_to_a_macos_universal2_wheel_release() -> None:
+    # cryptography 48.x is the last series to publish a macOS universal2 wheel;
+    # 49.0.0 dropped it in favor of an arm64-only wheel, which would force a
+    # from-source (Rust toolchain) build for uvx installs on Intel Macs. Stay on
+    # a 48.x pin until we intentionally handle that regression.
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
 
-    assert "cryptography==48.0.0" in pyproject["project"]["dependencies"]
+    crypto_pins = [
+        dep for dep in pyproject["project"]["dependencies"] if dep.startswith("cryptography==")
+    ]
+
+    assert len(crypto_pins) == 1
+    assert crypto_pins[0].startswith("cryptography==48.")
 
 
 def test_mcpb_manifest_lists_task_mutation_tools() -> None:
