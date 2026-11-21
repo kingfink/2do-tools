@@ -10,6 +10,8 @@ This project is experimental, provided as-is, and independent from 2Do and its d
 
 ## Install
 
+Requires macOS on Apple Silicon (arm64) with native arm64 Python 3.11 or newer. Intel Macs and Python running under Rosetta are not supported.
+
 Install [`uv`](https://docs.astral.sh/uv/) first:
 
 ```bash

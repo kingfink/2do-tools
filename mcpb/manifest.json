@@ -4,7 +4,7 @@
   "display_name": "2Do Tools",
   "version": "0.10.0",
   "description": "Read, create, and complete tasks in the local 2Do macOS app.",
-  "long_description": "A local MCP server for reading tasks from a read-only backup and creating or completing confirmed tasks through the 2Do macOS app.",
+  "long_description": "A local MCP server for reading tasks from a read-only backup and creating or completing confirmed tasks through the 2Do macOS app. Requires macOS on Apple Silicon (arm64) with native arm64 Python 3.11 or newer. Intel Macs and Python running under Rosetta are not supported.",
   "author": {
     "name": "Tim Finkel",
     "url": "https://github.com/kingfink"
