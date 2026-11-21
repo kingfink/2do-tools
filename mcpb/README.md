@@ -3,6 +3,8 @@
 This directory contains the MCPB manifest and entry point used to package
 2Do Tools as a Claude Desktop extension.
 
+Requires macOS on Apple Silicon (arm64) with native arm64 Python 3.11 or newer. Intel Macs and Python running under Rosetta are not supported.
+
 Build from the repository root:
 
 ```bash

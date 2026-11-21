@@ -4,6 +4,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from packaging.utils import parse_wheel_filename
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STABLE_GIT_REF = "git+https://github.com/kingfink/2do-tools@stable"
@@ -71,19 +72,23 @@ def test_product_metadata_describes_reading_creating_and_completing_tasks() -> N
     assert "read-only MCP server" not in mcpb_manifest["long_description"]
 
 
-def test_project_pins_cryptography_to_a_macos_universal2_wheel_release() -> None:
-    # cryptography 48.x is the last series to publish a macOS universal2 wheel;
-    # 49.0.0 dropped it in favor of an arm64-only wheel, which would force a
-    # from-source (Rust toolchain) build for uvx installs on Intel Macs. Stay on
-    # a 48.x pin until we intentionally handle that regression.
+def test_locked_cryptography_has_an_apple_silicon_wheel() -> None:
+    # Intel Macs are no longer supported. Keep native Apple Silicon installs
+    # free of source builds without restricting cryptography to a major version.
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    lockfile = tomllib.loads((REPO_ROOT / "uv.lock").read_text())
+    cryptography = next(pkg for pkg in lockfile["package"] if pkg["name"] == "cryptography")
 
     crypto_pins = [
         dep for dep in pyproject["project"]["dependencies"] if dep.startswith("cryptography==")
     ]
 
-    assert len(crypto_pins) == 1
-    assert crypto_pins[0].startswith("cryptography==48.")
+    assert crypto_pins == [f"cryptography=={cryptography['version']}"]
+    assert any(
+        tag.platform.startswith("macosx_") and tag.platform.endswith(("_arm64", "_universal2"))
+        for wheel in cryptography["wheels"]
+        for tag in parse_wheel_filename(wheel["url"].rsplit("/", 1)[-1])[3]
+    )
 
 
 def test_mcpb_manifest_lists_task_mutation_tools() -> None:
